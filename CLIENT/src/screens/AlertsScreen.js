@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,25 +7,50 @@ import {
   TouchableOpacity,
   FlatList,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_ALERTS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 export default function AlertsScreen({ navigation }) {
   const [selectedTab, setSelectedTab] = useState('All');
   const [alerts, setAlerts] = useState(MOCK_ALERTS);
+  const [refreshing, setRefreshing] = useState(false);
 
   const tabs = ['All', 'Critical', 'High', 'Medium', 'Low'];
 
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const data = await ApiService.getAlerts(selectedTab);
+      if (data && data.length > 0) {
+        setAlerts(data);
+      }
+    } catch (e) {
+      console.warn('Alerts fetch fallback', e);
+    }
+  }, [selectedTab]);
+
+  useEffect(() => {
+    fetchAlerts();
+  }, [fetchAlerts]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchAlerts();
+    setRefreshing(false);
+  };
+
   const filteredAlerts = alerts.filter((alt) => {
     if (selectedTab === 'All') return true;
-    return alt.type.toLowerCase() === selectedTab.toLowerCase();
+    return (alt.type || '').toLowerCase() === selectedTab.toLowerCase();
   });
 
   const markAllRead = () => {
     setAlerts(alerts.map(a => ({ ...a, read: true })));
+    alerts.forEach(a => ApiService.markAlertAsRead(a.id).catch(() => {}));
     Alert.alert('Alerts Updated', 'All notification alerts marked as read.');
   };
 
@@ -73,6 +98,9 @@ export default function AlertsScreen({ navigation }) {
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
         renderItem={({ item }) => {
           const isCrit = item.type === 'CRITICAL';
           const isHigh = item.type === 'HIGH';

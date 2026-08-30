@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,14 +6,39 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_INSPECTIONS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 export default function ReportsScreen({ navigation }) {
   const [exporting, setExporting] = useState(false);
+  const [inspectionsList, setInspectionsList] = useState(MOCK_INSPECTIONS);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchReports = useCallback(async () => {
+    try {
+      const data = await ApiService.getInspections();
+      if (data && data.length > 0) {
+        setInspectionsList(data);
+      }
+    } catch (e) {
+      console.warn('Reports fetch fallback', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReports();
+  }, [fetchReports]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchReports();
+    setRefreshing(false);
+  };
 
   const handleExport = (type) => {
     setExporting(true);
@@ -53,6 +78,9 @@ export default function ReportsScreen({ navigation }) {
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
       >
         {/* KPI Summary Strip */}
         <View style={styles.summaryStrip}>
@@ -75,7 +103,7 @@ export default function ReportsScreen({ navigation }) {
         {/* Audit Reports List */}
         <Text style={styles.sectionHeading}>OFFICIAL INSPECTION REPORTS</Text>
 
-        {MOCK_INSPECTIONS.map((ins) => (
+        {inspectionsList.map((ins) => (
           <View key={ins.id} style={styles.reportCard}>
             <View style={styles.reportTop}>
               <View style={styles.idWrap}>

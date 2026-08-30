@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Dimensions,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_PROJECTS, MOCK_INSPECTIONS, MOCK_ALERTS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 const { width } = Dimensions.get('window');
 
@@ -19,8 +21,50 @@ export default function HomeScreen({ navigation, route }) {
   const userRole = route.params?.userRole || 'DoSJE Official';
   const isInspector = userRole === 'PMU Inspector';
 
-  const upcomingInspection = MOCK_INSPECTIONS[0];
-  const highRiskProject = MOCK_PROJECTS.find((p) => p.riskScore >= 80) || MOCK_PROJECTS[2];
+  const [refreshing, setRefreshing] = useState(false);
+  const [dashboardData, setDashboardData] = useState({
+    totalProjects: 128,
+    inspectionsToday: 24,
+    pendingInspections: 17,
+    highRiskProjectsCount: 8,
+    completedPercentage: 61,
+    inProgressPercentage: 27,
+    pendingPercentage: 12,
+  });
+  const [upcomingInspection, setUpcomingInspection] = useState(MOCK_INSPECTIONS[0]);
+  const [highRiskProject, setHighRiskProject] = useState(
+    MOCK_PROJECTS.find((p) => p.riskScore >= 80) || MOCK_PROJECTS[2]
+  );
+
+  const fetchLiveDashboard = useCallback(async () => {
+    try {
+      const stats = await ApiService.getDashboardAnalytics();
+      if (stats) {
+        setDashboardData(stats);
+      }
+      const inspections = await ApiService.getInspections();
+      if (inspections && inspections.length > 0) {
+        setUpcomingInspection(inspections[0]);
+      }
+      const projects = await ApiService.getProjects();
+      if (projects && projects.length > 0) {
+        const hr = projects.find((p) => (p.riskScore || 0) >= 75) || projects[0];
+        setHighRiskProject(hr);
+      }
+    } catch (e) {
+      console.warn('Dashboard fetch offline fallback', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveDashboard();
+  }, [fetchLiveDashboard]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchLiveDashboard();
+    setRefreshing(false);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -69,6 +113,9 @@ export default function HomeScreen({ navigation, route }) {
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
       >
         {/* ================= INSPECTOR-CENTRIC VIEW (SCREEN 9) ================= */}
         {isInspector ? (
@@ -112,7 +159,7 @@ export default function HomeScreen({ navigation, route }) {
                 </View>
                 <View style={styles.distBadge}>
                   <Ionicons name="navigate" size={12} color={COLORS.primary} />
-                  <Text style={styles.distBadgeText}>{upcomingInspection.distance} away</Text>
+                  <Text style={styles.distBadgeText}>{upcomingInspection.distance || '14.2 km'} away</Text>
                 </View>
               </View>
 
@@ -137,7 +184,7 @@ export default function HomeScreen({ navigation, route }) {
                   onPress={() =>
                     Alert.alert(
                       'Turn-by-Turn Navigation',
-                      `Opening GPS Navigation to ${upcomingInspection.projectName} (${upcomingInspection.distance}). Coordinates: 18.5204, 73.8567`
+                      `Opening GPS Navigation to ${upcomingInspection.projectName} (${upcomingInspection.distance || '14.2 km'}). Coordinates: 18.5204, 73.8567`
                     )
                   }
                 >
@@ -186,7 +233,7 @@ export default function HomeScreen({ navigation, route }) {
                     <Ionicons name="business" size={18} color={COLORS.info} />
                   </View>
                 </View>
-                <Text style={styles.statValue}>128</Text>
+                <Text style={styles.statValue}>{dashboardData.totalProjects || 128}</Text>
                 <Text style={styles.statSubText}>+12 active this month</Text>
               </TouchableOpacity>
 
@@ -201,9 +248,9 @@ export default function HomeScreen({ navigation, route }) {
                     <Ionicons name="checkmark-done" size={18} color={COLORS.success} />
                   </View>
                 </View>
-                <Text style={styles.statValue}>24</Text>
+                <Text style={styles.statValue}>{dashboardData.inspectionsToday || 24}</Text>
                 <Text style={[styles.statSubText, { color: COLORS.success }]}>
-                  15 completed (62%)
+                  {dashboardData.completedPercentage || 61}% completed
                 </Text>
               </TouchableOpacity>
 
@@ -218,9 +265,9 @@ export default function HomeScreen({ navigation, route }) {
                     <Ionicons name="time-outline" size={18} color={COLORS.warning} />
                   </View>
                 </View>
-                <Text style={styles.statValue}>17</Text>
+                <Text style={styles.statValue}>{dashboardData.pendingInspections || 17}</Text>
                 <Text style={[styles.statSubText, { color: COLORS.warning }]}>
-                  4 due today
+                  {dashboardData.pendingPercentage || 12}% pending
                 </Text>
               </TouchableOpacity>
 
@@ -235,7 +282,9 @@ export default function HomeScreen({ navigation, route }) {
                     <Ionicons name="warning" size={18} color={COLORS.critical} />
                   </View>
                 </View>
-                <Text style={[styles.statValue, { color: COLORS.critical }]}>8</Text>
+                <Text style={[styles.statValue, { color: COLORS.critical }]}>
+                  {dashboardData.highRiskProjectsCount || 8}
+                </Text>
                 <Text style={[styles.statSubText, { color: COLORS.critical }]}>
                   Requires inspection
                 </Text>

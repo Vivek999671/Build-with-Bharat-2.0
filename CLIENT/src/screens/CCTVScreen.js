@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,14 +6,39 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_PROJECTS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 export default function CCTVScreen({ navigation }) {
   const [selectedCam, setSelectedCam] = useState('CAM-01');
+  const [cctvList, setCctvList] = useState(MOCK_PROJECTS);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchCCTV = useCallback(async () => {
+    try {
+      const projects = await ApiService.getProjects();
+      if (projects && projects.length > 0) {
+        setCctvList(projects);
+      }
+    } catch (e) {
+      console.warn('CCTV fetch fallback', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchCCTV();
+  }, [fetchCCTV]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchCCTV();
+    setRefreshing(false);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -29,8 +54,11 @@ export default function CCTVScreen({ navigation }) {
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
       >
-        {MOCK_PROJECTS.map((proj) => {
+        {cctvList.map((proj) => {
           const isOnline = proj.cctvStatus === 'ONLINE';
 
           return (

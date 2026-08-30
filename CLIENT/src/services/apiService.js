@@ -1,11 +1,20 @@
 // DoSJE Real-Time Monitoring & Digital Inspection REST API Client
+import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { MOCK_PROJECTS, MOCK_INSPECTIONS, MOCK_ALERTS } from '../data/mockData';
+import { MOCK_PROJECTS, MOCK_INSPECTIONS, MOCK_ALERTS, MOCK_INSPECTORS } from '../data/mockData';
 
-// Configure Backend API Base URL (Change to your machine's LAN IP for physical device testing)
-const API_BASE_URL = 'http://localhost:8080/api';
+// Configure Backend API Base URL
+// Android Emulator maps host localhost to 10.0.2.2, iOS Simulator / Web uses localhost
+export const getApiBaseUrl = () => {
+  if (Platform.OS === 'android') {
+    return 'http://10.0.2.2:8080/api';
+  }
+  return 'http://localhost:8080/api';
+};
 
+const API_BASE_URL = getApiBaseUrl();
 const TOKEN_KEY = 'DOSJE_AUTH_JWT_TOKEN';
+const USER_KEY = 'DOSJE_AUTH_USER_DATA';
 
 // Helper to retrieve saved JWT token
 export async function getAuthToken() {
@@ -29,8 +38,29 @@ export async function setAuthToken(token) {
   }
 }
 
-// Universal fetch wrapper with authorization header
-async function apiRequest(endpoint, options = {}) {
+export async function getSavedUser() {
+  try {
+    const data = await SecureStore.getItemAsync(USER_KEY);
+    return data ? JSON.parse(data) : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+export async function setSavedUser(user) {
+  try {
+    if (user) {
+      await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+    } else {
+      await SecureStore.deleteItemAsync(USER_KEY);
+    }
+  } catch (e) {
+    console.warn('Error saving user to secure store', e);
+  }
+}
+
+// Universal fetch wrapper with authorization header & timeout
+async function apiRequest(endpoint, options = {}, timeoutMs = 3500) {
   const token = await getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -38,18 +68,29 @@ async function apiRequest(endpoint, options = {}) {
     ...(options.headers || {}),
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `HTTP Error ${response.status}`);
+  try {
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timer);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP Error ${response.status}`);
+    }
+
+    const json = await response.json();
+    return json.data !== undefined ? json.data : json;
+  } catch (err) {
+    clearTimeout(timer);
+    throw err;
   }
-
-  const json = await response.json();
-  return json.data;
 }
 
 export const ApiService = {

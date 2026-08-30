@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_PROJECTS, MOCK_INSPECTORS } from '../data/mockData';
 import { sendLocalNotification } from '../services/notificationService';
+import { ApiService } from '../services/apiService';
 
 export default function RandomAssignmentScreen({ navigation, route }) {
   const initialProject = route.params?.project || MOCK_PROJECTS[0];
@@ -30,37 +31,82 @@ export default function RandomAssignmentScreen({ navigation, route }) {
   const [assignedResult, setAssignedResult] = useState(null);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
 
-  // Rule-based Random Assignment Algorithm
-  const handleGenerateRandomAssignment = () => {
+  // Rule-based Random Assignment Algorithm connected to Backend REST API
+  const handleGenerateRandomAssignment = async () => {
     setGenerating(true);
     setAssignedResult(null);
 
-    setTimeout(() => {
-      // Pick best inspector based on workload and distance scoring
-      const candidates = [...MOCK_INSPECTORS];
-      // Sort primarily by lowest active tasks & lowest distance
-      candidates.sort((a, b) => a.distanceKm - b.distanceKm);
+    try {
+      // Call Backend API
+      const backendRes = await ApiService.randomAssignInspection(
+        selectedProject.id,
+        scheduledDate,
+        '11:30 AM',
+        priority
+      );
 
-      // Random jitter among top 2 candidates
-      const chosen = candidates[Math.floor(Math.random() * Math.min(2, candidates.length))];
+      if (backendRes && backendRes.inspectorName) {
+        const matchingInspector = MOCK_INSPECTORS.find(i => i.name === backendRes.inspectorName) || MOCK_INSPECTORS[0];
+        setAssignedResult({
+          project: selectedProject,
+          inspector: matchingInspector,
+          distance: `${matchingInspector.distanceKm} km`,
+          workload: matchingInspector.workloadScore,
+          allocationType: 'Rule-Based Randomized Allocation',
+          reason: backendRes.allocationReason || `Officer selected based on proximity (${matchingInspector.distanceKm} km), low workload balance, and randomized non-conflict rotation rules.`,
+          scheduledDate: scheduledDate,
+          scheduledTime: '11:30 AM',
+        });
+      } else {
+        // Local algorithm fallback
+        const candidates = [...MOCK_INSPECTORS];
+        candidates.sort((a, b) => a.distanceKm - b.distanceKm);
+        const chosen = candidates[Math.floor(Math.random() * Math.min(2, candidates.length))];
 
-      const result = {
+        setAssignedResult({
+          project: selectedProject,
+          inspector: chosen,
+          distance: `${chosen.distanceKm} km`,
+          workload: chosen.workloadScore,
+          allocationType: 'Rule-Based Randomized Allocation',
+          reason: `Officer selected based on proximity (${chosen.distanceKm} km), low workload balance (${chosen.workloadScore}), and randomized non-conflict rotation rules.`,
+          scheduledDate: scheduledDate,
+          scheduledTime: '11:30 AM',
+        });
+      }
+    } catch (e) {
+      console.warn('Random assignment fallback', e);
+      const chosen = MOCK_INSPECTORS[0];
+      setAssignedResult({
         project: selectedProject,
         inspector: chosen,
         distance: `${chosen.distanceKm} km`,
         workload: chosen.workloadScore,
         allocationType: 'Rule-Based Randomized Allocation',
         reason: `Officer selected based on proximity (${chosen.distanceKm} km), low workload balance (${chosen.workloadScore}), and randomized non-conflict rotation rules.`,
-        scheduledDate: '28 May 2026',
+        scheduledDate: scheduledDate,
         scheduledTime: '11:30 AM',
-      };
-
-      setAssignedResult(result);
+      });
+    } finally {
       setGenerating(false);
-    }, 1200);
+    }
   };
 
-  const handleConfirmDispatch = () => {
+  const handleConfirmDispatch = async () => {
+    try {
+      if (assignmentMode === 'manual') {
+        await ApiService.assignInspection(
+          selectedProject.id,
+          selectedInspector.id,
+          scheduledDate,
+          '11:30 AM',
+          priority
+        );
+      }
+    } catch (e) {
+      console.warn('Dispatch offline fallback', e);
+    }
+
     sendLocalNotification({
       title: 'New Inspection Assigned',
       body: `Inspection for ${selectedProject.name} assigned to ${assignedResult ? assignedResult.inspector.name : selectedInspector.name}.`,
