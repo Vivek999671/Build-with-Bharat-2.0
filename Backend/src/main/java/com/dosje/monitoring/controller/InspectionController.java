@@ -102,6 +102,27 @@ public class InspectionController {
         }
     }
 
+    @PostMapping(value = "/{id}/evidence/upload", consumes = org.springframework.http.MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ApiResponse<Evidence>> uploadEvidence(
+            @PathVariable String id,
+            @RequestParam("file") org.springframework.web.multipart.MultipartFile file,
+            @RequestParam(value = "fileName", required = false) String fileName,
+            @RequestParam(value = "mediaType", required = false) String mediaType,
+            @RequestParam(value = "latitude", required = false) Double latitude,
+            @RequestParam(value = "longitude", required = false) Double longitude,
+            @RequestParam(value = "accuracyMeters", required = false) Double accuracyMeters,
+            @RequestParam(value = "capturedTimestamp", required = false) String capturedTimestamp,
+            @RequestParam(value = "caption", required = false) String caption) {
+        try {
+            Evidence evidence = inspectionService.uploadAndSaveEvidence(
+                    id, file, fileName, mediaType, latitude, longitude, accuracyMeters, capturedTimestamp, caption
+            );
+            return ResponseEntity.ok(ApiResponse.ok("Evidence uploaded to Supabase Storage and registered", evidence));
+        } catch (Exception ex) {
+            return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
+        }
+    }
+
     @GetMapping("/{id}/evidence")
     public ResponseEntity<ApiResponse<List<Evidence>>> getEvidences(@PathVariable String id) {
         List<Evidence> list = inspectionService.getEvidences(id);

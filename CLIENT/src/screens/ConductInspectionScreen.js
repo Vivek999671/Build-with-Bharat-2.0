@@ -161,15 +161,35 @@ export default function ConductInspectionScreen({ navigation, route }) {
       }
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        const fileName = `Evidence_${Date.now().toString().slice(-4)}.jpg`;
         const newEvidence = {
           id: `EV-${Date.now().toString().slice(-4)}`,
-          uri: result.assets[0].uri,
-          name: `Evidence_${Date.now().toString().slice(-4)}.jpg`,
+          uri: asset.uri,
+          name: fileName,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           coordinates: gpsData ? `${gpsData.latitude}° N, ${gpsData.longitude}° E` : '18.5204° N, 73.8567° E',
           type: 'photo',
         };
-        setEvidenceList([...evidenceList, newEvidence]);
+        setEvidenceList((prev) => [...prev, newEvidence]);
+
+        // Asynchronously upload binary to Spring Boot -> Supabase Storage
+        try {
+          const uploadRes = await ApiService.uploadEvidenceFile(inspection.id, asset.uri, {
+            fileName,
+            mediaType: 'IMAGE',
+            latitude: gpsData?.latitude || 18.5204,
+            longitude: gpsData?.longitude || 73.8567,
+            accuracyMeters: gpsData?.accuracy || 6.4,
+            capturedTimestamp: new Date().toISOString(),
+            caption: `Geo-Tagged Field Photo for ${project.name}`,
+          });
+          if (uploadRes && uploadRes.fileUrl) {
+            newEvidence.fileUrl = uploadRes.fileUrl;
+          }
+        } catch (uploadErr) {
+          console.warn('Evidence photo saved locally for offline queue:', uploadErr.message);
+        }
       }
     } catch (e) {
       Alert.alert('Notice', 'Evidence photo added successfully.');

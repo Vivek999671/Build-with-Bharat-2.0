@@ -16,7 +16,7 @@ public class Evidence {
 
     private String projectId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TEXT")
     private String fileUrl;
 
     private String fileName;
@@ -27,6 +27,7 @@ public class Evidence {
     private Double accuracyMeters;
 
     private String capturedTimestamp;
+    @Column(columnDefinition = "TEXT")
     private String caption;
 
     private LocalDateTime createdAt = LocalDateTime.now();

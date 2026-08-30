@@ -31,6 +31,9 @@ public class InspectionService {
     @Autowired
     private RiskAnalysisService riskAnalysisService;
 
+    @Autowired
+    private SupabaseStorageService storageService;
+
     public List<Inspection> getAllInspections(String status) {
         if (status == null || status.equalsIgnoreCase("All") || status.trim().isEmpty()) {
             return inspectionRepository.findAll();
@@ -146,6 +149,31 @@ public class InspectionService {
         evidence.setAccuracyMeters(request.getAccuracyMeters() != null ? request.getAccuracyMeters() : 8.0);
         evidence.setCapturedTimestamp(request.getCapturedTimestamp() != null ? request.getCapturedTimestamp() : LocalDateTime.now().toString());
         evidence.setCaption(request.getCaption() != null ? request.getCaption() : "Geo-Tagged Inspection Evidence");
+
+        return evidenceRepository.save(evidence);
+    }
+
+    public Evidence uploadAndSaveEvidence(String inspectionId, org.springframework.web.multipart.MultipartFile file,
+                                          String fileName, String mediaType, Double latitude, Double longitude,
+                                          Double accuracyMeters, String capturedTimestamp, String caption) throws Exception {
+        Inspection inspection = inspectionRepository.findById(inspectionId)
+                .orElseThrow(() -> new RuntimeException("Inspection not found: " + inspectionId));
+
+        // 1. Securely upload binary file to Supabase Storage bucket 'evidence'
+        String storageUrl = storageService.uploadEvidenceFile(file, inspectionId);
+
+        // 2. Persist evidence record and URL in PostgreSQL database
+        Evidence evidence = new Evidence();
+        evidence.setInspectionId(inspectionId);
+        evidence.setProjectId(inspection.getProjectId());
+        evidence.setFileUrl(storageUrl);
+        evidence.setFileName(fileName != null && !fileName.trim().isEmpty() ? fileName : file.getOriginalFilename());
+        evidence.setMediaType(mediaType != null ? mediaType : (file.getContentType() != null && file.getContentType().contains("video") ? "VIDEO" : "IMAGE"));
+        evidence.setLatitude(latitude);
+        evidence.setLongitude(longitude);
+        evidence.setAccuracyMeters(accuracyMeters != null ? accuracyMeters : 8.0);
+        evidence.setCapturedTimestamp(capturedTimestamp != null ? capturedTimestamp : LocalDateTime.now().toString());
+        evidence.setCaption(caption != null ? caption : "Geo-Tagged Inspection Evidence");
 
         return evidenceRepository.save(evidence);
     }

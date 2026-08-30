@@ -28,6 +28,7 @@ public class Report {
 
     private String generatedBy;
     private String fileFormat = "PDF"; // PDF, CSV
+    @Column(columnDefinition = "TEXT")
     private String downloadUrl;
 
     private LocalDateTime generatedAt = LocalDateTime.now();

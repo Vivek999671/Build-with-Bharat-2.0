@@ -36,6 +36,7 @@ public class Inspection {
     private String priority = "Normal";
 
     private String allocationMethod = "Manual Allocation";
+    @Column(columnDefinition = "TEXT")
     private String allocationReason;
 
     // GPS Verification
@@ -55,10 +56,10 @@ public class Inspection {
     private String schemeCheck = "PASS";
 
     // Observations and Remarks
-    @Column(length = 2000)
+    @Column(columnDefinition = "TEXT")
     private String observations;
 
-    @Column(length = 2000)
+    @Column(columnDefinition = "TEXT")
     private String finalRemarks;
 
     private String overallStatus; // Compliant, Partially Compliant, Non-Compliant

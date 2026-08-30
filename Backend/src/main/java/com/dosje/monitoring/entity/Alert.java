@@ -20,7 +20,7 @@ public class Alert {
     private String projectId;
     private Integer riskScore;
 
-    @Column(length = 1000)
+    @Column(columnDefinition = "TEXT")
     private String description;
 
     private String timestamp;

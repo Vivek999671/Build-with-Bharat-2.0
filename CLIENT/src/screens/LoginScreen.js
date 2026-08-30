@@ -59,15 +59,23 @@ export default function LoginScreen({ navigation }) {
 
     setLoading(true);
     try {
-      // Connect to Backend API (with automatic mock fallback)
       const user = await ApiService.login(officialId, password === '••••••••' ? 'admin123' : password);
       if (user) {
         await setSavedUser(user);
       }
       navigation.replace('MainTabs', { userRole: selectedRole, user });
     } catch (err) {
-      // Fallback
-      navigation.replace('MainTabs', { userRole: selectedRole });
+      Alert.alert(
+        'Authentication Notice',
+        `Server notice: ${err.message || 'Unable to connect to Spring Boot / Supabase'}.\n\nWould you like to continue in offline inspection mode?`,
+        [
+          { text: 'Retry', style: 'cancel' },
+          {
+            text: 'Offline Mode',
+            onPress: () => navigation.replace('MainTabs', { userRole: selectedRole }),
+          },
+        ]
+      );
     } finally {
       setLoading(false);
     }

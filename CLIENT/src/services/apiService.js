@@ -1,18 +1,24 @@
 // DoSJE Real-Time Monitoring & Digital Inspection REST API Client
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import { MOCK_PROJECTS, MOCK_INSPECTIONS, MOCK_ALERTS, MOCK_INSPECTORS } from '../data/mockData';
 
 // Configure Backend API Base URL
-// Android Emulator maps host localhost to 10.0.2.2, iOS Simulator / Web uses localhost
+// Configurable via EXPO_PUBLIC_API_URL environment variable, with fallback for local dev
 export const getApiBaseUrl = () => {
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8080/api';
   }
   return 'http://localhost:8080/api';
 };
+//temporary 
+
 
 const API_BASE_URL = getApiBaseUrl();
+
+console.log('API BASE URL:', API_BASE_URL);
 const TOKEN_KEY = 'DOSJE_AUTH_JWT_TOKEN';
 const USER_KEY = 'DOSJE_AUTH_USER_DATA';
 
@@ -59,8 +65,8 @@ export async function setSavedUser(user) {
   }
 }
 
-// Universal fetch wrapper with authorization header & timeout
-async function apiRequest(endpoint, options = {}, timeoutMs = 3500) {
+// Universal fetch wrapper with Bearer token & timeout
+async function apiRequest(endpoint, options = {}, timeoutMs = 6000) {
   const token = await getAuthToken();
   const headers = {
     'Content-Type': 'application/json',
@@ -96,246 +102,166 @@ async function apiRequest(endpoint, options = {}, timeoutMs = 3500) {
 export const ApiService = {
   // Authentication
   async login(username, password) {
-    try {
-      const data = await apiRequest('/auth/login', {
-        method: 'POST',
-        body: JSON.stringify({ username, password }),
-      });
-      if (data && data.token) {
-        await setAuthToken(data.token);
-      }
-      return data;
-    } catch (error) {
-      console.warn('Backend login fallback:', error.message);
-      // Offline / Demo fallback
-      return {
-        id: 1,
-        officialId: 'INS-OFF-01',
-        username: username || 'rahul.inspector',
-        fullName: 'Rahul Sharma',
-        role: 'ROLE_PMU_INSPECTOR',
-        department: 'DoSJE PMU Field Division',
-        designation: 'PMU Field Officer (Rank 2)',
-        district: 'Pune',
-        state: 'Maharashtra',
-      };
+    const data = await apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    });
+
+    if (data && data.token) {
+      await setAuthToken(data.token);
+      await setSavedUser(data);
     }
+    return data;
   },
 
   // Projects
   async getProjects(filter = 'All') {
-    try {
-      return await apiRequest(`/projects?filter=${encodeURIComponent(filter)}`);
-    } catch (error) {
-      console.warn('Fetching projects from local cache:', error.message);
-      if (filter === 'High Risk') {
-        return MOCK_PROJECTS.filter((p) => p.riskScore >= 70);
-      } else if (filter === 'Active') {
-        return MOCK_PROJECTS.filter((p) => p.status === 'Active');
-      } else if (filter === 'Pending') {
-        return MOCK_PROJECTS.filter((p) => p.status === 'Pending Review');
-      }
-      return MOCK_PROJECTS;
-    }
+    return await apiRequest(`/projects?filter=${encodeURIComponent(filter)}`);
   },
 
   async getProjectById(id) {
-    try {
-      return await apiRequest(`/projects/${id}`);
-    } catch (error) {
-      return MOCK_PROJECTS.find((p) => p.id === id) || MOCK_PROJECTS[0];
-    }
+    return await apiRequest(`/projects/${id}`);
   },
 
   // Inspections
   async getInspections(status = 'All') {
-    try {
-      return await apiRequest(`/inspections?status=${encodeURIComponent(status)}`);
-    } catch (error) {
-      if (status && status !== 'All') {
-        return MOCK_INSPECTIONS.filter((i) => i.status.toLowerCase() === status.toLowerCase());
-      }
-      return MOCK_INSPECTIONS;
-    }
+    return await apiRequest(`/inspections?status=${encodeURIComponent(status)}`);
   },
 
   async getInspectionById(id) {
-    try {
-      return await apiRequest(`/inspections/${id}`);
-    } catch (error) {
-      return MOCK_INSPECTIONS.find((i) => i.id === id) || MOCK_INSPECTIONS[0];
-    }
+    return await apiRequest(`/inspections/${id}`);
   },
 
   // Rule-Based Randomized Inspector Assignment
   async randomAssignInspection(projectId, scheduledDate, scheduledTime, priority) {
-    try {
-      return await apiRequest('/inspections/random-assign', {
-        method: 'POST',
-        body: JSON.stringify({ projectId, scheduledDate, scheduledTime, priority }),
-      });
-    } catch (error) {
-      console.warn('Backend random assign offline fallback:', error.message);
-      return null;
-    }
+    return await apiRequest('/inspections/random-assign', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, scheduledDate, scheduledTime, priority }),
+    });
   },
 
   // Manual Inspector Assignment
   async assignInspection(projectId, inspectorId, scheduledDate, scheduledTime, priority) {
-    try {
-      return await apiRequest('/inspections/assign', {
-        method: 'POST',
-        body: JSON.stringify({ projectId, inspectorId, scheduledDate, scheduledTime, priority }),
-      });
-    } catch (error) {
-      console.warn('Backend manual assign offline fallback:', error.message);
-      return null;
-    }
+    return await apiRequest('/inspections/assign', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, inspectorId, scheduledDate, scheduledTime, priority }),
+    });
   },
 
   // GPS Verification
   async verifyGPS(inspectionId, latitude, longitude, accuracyMeters, timestamp) {
-    try {
-      return await apiRequest(`/inspections/${inspectionId}/gps`, {
-        method: 'POST',
-        body: JSON.stringify({ latitude, longitude, accuracyMeters, timestamp }),
-      });
-    } catch (error) {
-      console.warn('GPS Verification offline mode:', error.message);
-      return { success: true, offline: true };
-    }
+    return await apiRequest(`/inspections/${inspectionId}/gps`, {
+      method: 'POST',
+      body: JSON.stringify({ latitude, longitude, accuracyMeters, timestamp }),
+    });
   },
 
   // Attendance Verification
   async verifyAttendance(inspectionId, totalStaff, presentStaff, absentStaff, beneficiariesPresent) {
+    return await apiRequest(`/inspections/${inspectionId}/attendance`, {
+      method: 'POST',
+      body: JSON.stringify({ totalStaff, presentStaff, absentStaff, beneficiariesPresent }),
+    });
+  },
+
+  // Multipart Evidence Photo / Video Upload to Spring Boot -> Supabase Storage -> PostgreSQL
+  async uploadEvidenceFile(inspectionId, fileUri, metadata = {}) {
+    const token = await getAuthToken();
+    const formData = new FormData();
+
+    const uriParts = fileUri.split('/');
+    const fileName = metadata.fileName || uriParts[uriParts.length - 1] || `evidence_${Date.now()}.jpg`;
+    const match = /\.(\w+)$/.exec(fileName);
+    const type = metadata.mediaType === 'VIDEO' ? 'video/mp4' : (match ? `image/${match[1]}` : 'image/jpeg');
+
+    formData.append('file', {
+      uri: Platform.OS === 'android' ? fileUri : fileUri.replace('file://', ''),
+      name: fileName,
+      type,
+    });
+
+    if (metadata.fileName) formData.append('fileName', metadata.fileName);
+    if (metadata.mediaType) formData.append('mediaType', metadata.mediaType);
+    if (metadata.latitude != null) formData.append('latitude', String(metadata.latitude));
+    if (metadata.longitude != null) formData.append('longitude', String(metadata.longitude));
+    if (metadata.accuracyMeters != null) formData.append('accuracyMeters', String(metadata.accuracyMeters));
+    if (metadata.capturedTimestamp) formData.append('capturedTimestamp', metadata.capturedTimestamp);
+    if (metadata.caption) formData.append('caption', metadata.caption);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000); // 15s timeout for media upload
+
     try {
-      return await apiRequest(`/inspections/${inspectionId}/attendance`, {
+      const response = await fetch(`${API_BASE_URL}/inspections/${inspectionId}/evidence/upload`, {
         method: 'POST',
-        body: JSON.stringify({ totalStaff, presentStaff, absentStaff, beneficiariesPresent }),
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: formData,
+        signal: controller.signal,
       });
-    } catch (error) {
-      console.warn('Attendance verification offline mode:', error.message);
-      const rate = Math.round((presentStaff / totalStaff) * 100);
-      return {
-        attendanceRate: rate,
-        anomalyDetected: rate < 60,
-        anomalyReason: rate < 60 ? 'Attendance anomaly detected (> 20% deviation)' : null,
-      };
+
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || `Upload failed with status ${response.status}`);
+      }
+
+      const json = await response.json();
+      return json.data !== undefined ? json.data : json;
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
     }
   },
 
-  // Digital Evidence Registration
+  // Digital Evidence Registration (JSON metadata fallback)
   async uploadEvidence(inspectionId, fileUrl, fileName, mediaType, latitude, longitude, accuracyMeters, capturedTimestamp, caption) {
-    try {
-      return await apiRequest(`/inspections/${inspectionId}/evidence`, {
-        method: 'POST',
-        body: JSON.stringify({ fileUrl, fileName, mediaType, latitude, longitude, accuracyMeters, capturedTimestamp, caption }),
-      });
-    } catch (error) {
-      console.warn('Evidence registration offline mode:', error.message);
-      return { success: true, offline: true };
-    }
+    return await apiRequest(`/inspections/${inspectionId}/evidence`, {
+      method: 'POST',
+      body: JSON.stringify({ fileUrl, fileName, mediaType, latitude, longitude, accuracyMeters, capturedTimestamp, caption }),
+    });
   },
 
   // Final Inspection Submission
   async submitInspection(inspectionId, submitData) {
-    try {
-      return await apiRequest(`/inspections/${inspectionId}/submit`, {
-        method: 'POST',
-        body: JSON.stringify(submitData),
-      });
-    } catch (error) {
-      console.warn('Inspection submission saved locally for later sync:', error.message);
-      return { success: true, offline: true, status: 'Completed' };
-    }
+    return await apiRequest(`/inspections/${inspectionId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify(submitData),
+    });
   },
 
   // Analytics
   async getDashboardAnalytics() {
-    try {
-      return await apiRequest('/analytics/dashboard');
-    } catch (error) {
-      return {
-        totalProjects: 128,
-        inspectionsToday: 24,
-        pendingInspections: 17,
-        highRiskProjectsCount: 8,
-        completedPercentage: 61,
-        inProgressPercentage: 27,
-        pendingPercentage: 12,
-        onlineCCTVCount: 112,
-        activeInspectionsCount: 24,
-        highRiskProjects: MOCK_PROJECTS.filter((p) => p.riskScore >= 70),
-        recentAlerts: MOCK_ALERTS,
-      };
-    }
+    return await apiRequest('/analytics/dashboard');
   },
 
   async getRiskAnalytics() {
-    try {
-      return await apiRequest('/analytics/risk');
-    } catch (error) {
-      return {
-        overallRiskScore: 48.5,
-        overallRiskLevel: 'MODERATE RISK',
-        totalEvaluatedProjects: 128,
-        criticalRiskCount: 8,
-        highRiskCount: 14,
-        mediumRiskCount: 32,
-        lowRiskCount: 74,
-      };
-    }
+    return await apiRequest('/analytics/risk');
   },
 
   // Alerts
   async getAlerts(type = 'All') {
-    try {
-      return await apiRequest(`/alerts?type=${encodeURIComponent(type)}`);
-    } catch (error) {
-      if (type && type !== 'All') {
-        return MOCK_ALERTS.filter((a) => a.type.toLowerCase() === type.toLowerCase());
-      }
-      return MOCK_ALERTS;
-    }
+    return await apiRequest(`/alerts?type=${encodeURIComponent(type)}`);
   },
 
   async markAlertAsRead(id) {
-    try {
-      return await apiRequest(`/alerts/${id}/read`, { method: 'PUT' });
-    } catch (error) {
-      return { success: true };
-    }
+    return await apiRequest(`/alerts/${id}/read`, { method: 'PUT' });
   },
 
   // CCTV
   async getCCTV(status = 'All') {
-    try {
-      return await apiRequest(`/cctv?status=${encodeURIComponent(status)}`);
-    } catch (error) {
-      return [
-        { id: 'CAM-01', name: 'Camera 01 - Main Gate', projectName: 'Tribal Welfare Centre', status: 'ONLINE', lastConnected: '2 mins ago' },
-        { id: 'CAM-02', name: 'Camera 02 - Admin Block', projectName: 'Women Support Centre', status: 'ONLINE', lastConnected: 'Just now' },
-        { id: 'CAM-03', name: 'Camera 03 - Activity Wing', projectName: 'Child Care Institute', status: 'OFFLINE', lastConnected: '4 hours ago' },
-        { id: 'CAM-04', name: 'Camera 04 - Workshop Ground', projectName: 'Divyang Skill Centre', status: 'ONLINE', lastConnected: '1 min ago' },
-      ];
-    }
+    return await apiRequest(`/cctv?status=${encodeURIComponent(status)}`);
   },
 
   // Reports
   async getReports() {
-    try {
-      return await apiRequest('/reports');
-    } catch (error) {
-      return [];
-    }
+    return await apiRequest('/reports');
   },
 
   async generateReport(params) {
-    try {
-      const query = new URLSearchParams(params).toString();
-      return await apiRequest(`/reports/generate?${query}`, { method: 'POST' });
-    } catch (error) {
-      return { success: true };
-    }
+    const query = new URLSearchParams(params).toString();
+    return await apiRequest(`/reports/generate?${query}`, { method: 'POST' });
   },
 };

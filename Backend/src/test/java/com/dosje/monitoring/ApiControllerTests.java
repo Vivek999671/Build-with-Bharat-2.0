@@ -24,6 +24,13 @@ class ApiControllerTests {
     @Autowired
     private ObjectMapper objectMapper;
 
+    @Autowired
+    private com.dosje.monitoring.config.JwtTokenProvider jwtTokenProvider;
+
+    private String getAuthToken() {
+        return "Bearer " + jwtTokenProvider.generateToken("admin", "ROLE_DOSJE_OFFICIAL");
+    }
+
     @Test
     void testAuthLogin_Success() throws Exception {
         LoginRequest loginRequest = new LoginRequest("admin", "admin123");
@@ -39,7 +46,8 @@ class ApiControllerTests {
 
     @Test
     void testGetAllProjects() throws Exception {
-        mockMvc.perform(get("/api/projects"))
+        mockMvc.perform(get("/api/projects")
+                        .header("Authorization", getAuthToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray());
@@ -47,7 +55,8 @@ class ApiControllerTests {
 
     @Test
     void testGetAllInspections() throws Exception {
-        mockMvc.perform(get("/api/inspections"))
+        mockMvc.perform(get("/api/inspections")
+                        .header("Authorization", getAuthToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray());
@@ -58,6 +67,7 @@ class ApiControllerTests {
         RandomAssignRequest request = new RandomAssignRequest("PRJ-001", "30 May 2026", "11:00 AM", "High");
 
         mockMvc.perform(post("/api/inspections/random-assign")
+                        .header("Authorization", getAuthToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -71,6 +81,7 @@ class ApiControllerTests {
         GPSVerificationRequest request = new GPSVerificationRequest(18.5204, 73.8567, 7.5, "28 May 2026, 11:30 AM");
 
         mockMvc.perform(post("/api/inspections/INS-2026-1024/gps")
+                        .header("Authorization", getAuthToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -84,6 +95,7 @@ class ApiControllerTests {
         AttendanceVerificationRequest request = new AttendanceVerificationRequest(50, 18, 32, 80);
 
         mockMvc.perform(post("/api/inspections/INS-2026-1024/attendance")
+                        .header("Authorization", getAuthToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -105,6 +117,7 @@ class ApiControllerTests {
         );
 
         mockMvc.perform(post("/api/inspections/INS-2026-1024/evidence")
+                        .header("Authorization", getAuthToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -117,6 +130,7 @@ class ApiControllerTests {
         // Ensure GPS verified first
         GPSVerificationRequest gps = new GPSVerificationRequest(18.5204, 73.8567, 6.0, "28 May 2026, 11:30 AM");
         mockMvc.perform(post("/api/inspections/INS-2026-1024/gps")
+                .header("Authorization", getAuthToken())
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(gps)));
 
@@ -134,6 +148,7 @@ class ApiControllerTests {
         submitRequest.setComplianceScore(92);
 
         mockMvc.perform(post("/api/inspections/INS-2026-1024/submit")
+                        .header("Authorization", getAuthToken())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(submitRequest)))
                 .andExpect(status().isOk())
@@ -143,7 +158,8 @@ class ApiControllerTests {
 
     @Test
     void testDashboardAnalytics() throws Exception {
-        mockMvc.perform(get("/api/analytics/dashboard"))
+        mockMvc.perform(get("/api/analytics/dashboard")
+                        .header("Authorization", getAuthToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.totalProjects").isNumber());
@@ -151,7 +167,8 @@ class ApiControllerTests {
 
     @Test
     void testRiskAnalytics() throws Exception {
-        mockMvc.perform(get("/api/analytics/risk"))
+        mockMvc.perform(get("/api/analytics/risk")
+                        .header("Authorization", getAuthToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.overallRiskScore").isNumber());
@@ -159,7 +176,8 @@ class ApiControllerTests {
 
     @Test
     void testGetAlerts() throws Exception {
-        mockMvc.perform(get("/api/alerts"))
+        mockMvc.perform(get("/api/alerts")
+                        .header("Authorization", getAuthToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray());
@@ -167,7 +185,8 @@ class ApiControllerTests {
 
     @Test
     void testGetCCTV() throws Exception {
-        mockMvc.perform(get("/api/cctv"))
+        mockMvc.perform(get("/api/cctv")
+                        .header("Authorization", getAuthToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data").isArray());

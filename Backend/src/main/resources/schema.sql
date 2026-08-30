@@ -1,8 +1,8 @@
 -- DoSJE Real-Time Monitoring & Digital Inspection Relational Schema
--- Database: MySQL
+-- Database: PostgreSQL (Supabase)
 
 CREATE TABLE IF NOT EXISTS users (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     official_id VARCHAR(50) NOT NULL UNIQUE,
     username VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
     completed_today INT DEFAULT 0,
     pending_today INT DEFAULT 0,
     current_location_name VARCHAR(150),
-    current_lat DOUBLE,
-    current_lng DOUBLE,
+    current_lat DOUBLE PRECISION,
+    current_lng DOUBLE PRECISION,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS projects (
     location VARCHAR(200),
     state VARCHAR(100),
     district VARCHAR(100),
-    latitude DOUBLE,
-    longitude DOUBLE,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
     status VARCHAR(50) DEFAULT 'Active',
     risk_score INT DEFAULT 20,
     risk_level VARCHAR(30) DEFAULT 'Low',
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS projects (
     cctv_status VARCHAR(20) DEFAULT 'ONLINE',
     cctv_camera_id VARCHAR(50),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS inspections (
@@ -61,8 +61,8 @@ CREATE TABLE IF NOT EXISTS inspections (
     scheduled_time VARCHAR(50),
     status VARCHAR(50) DEFAULT 'Assigned',
     location VARCHAR(200),
-    latitude DOUBLE,
-    longitude DOUBLE,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
     distance VARCHAR(30),
     risk_level VARCHAR(30),
     attendance INT DEFAULT 0,
@@ -71,9 +71,9 @@ CREATE TABLE IF NOT EXISTS inspections (
     allocation_method VARCHAR(100),
     allocation_reason TEXT,
     gps_verified BOOLEAN DEFAULT FALSE,
-    captured_latitude DOUBLE,
-    captured_longitude DOUBLE,
-    gps_accuracy_meters DOUBLE,
+    captured_latitude DOUBLE PRECISION,
+    captured_longitude DOUBLE PRECISION,
+    gps_accuracy_meters DOUBLE PRECISION,
     gps_timestamp VARCHAR(50),
     infrastructure_check VARCHAR(30) DEFAULT 'PASS',
     staff_check VARCHAR(30) DEFAULT 'PASS',
@@ -87,11 +87,11 @@ CREATE TABLE IF NOT EXISTS inspections (
     overall_status VARCHAR(50),
     submitted_at TIMESTAMP NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS attendances (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     inspection_id VARCHAR(50) NOT NULL,
     project_id VARCHAR(50) NOT NULL,
     total_staff INT,
@@ -106,15 +106,15 @@ CREATE TABLE IF NOT EXISTS attendances (
 );
 
 CREATE TABLE IF NOT EXISTS evidences (
-    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     inspection_id VARCHAR(50) NOT NULL,
     project_id VARCHAR(50),
     file_url TEXT NOT NULL,
     file_name VARCHAR(200),
     media_type VARCHAR(30) DEFAULT 'IMAGE',
-    latitude DOUBLE,
-    longitude DOUBLE,
-    accuracy_meters DOUBLE,
+    latitude DOUBLE PRECISION,
+    longitude DOUBLE PRECISION,
+    accuracy_meters DOUBLE PRECISION,
     captured_timestamp VARCHAR(50),
     caption TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS cctv_cameras (
     last_connected VARCHAR(50),
     ip_address VARCHAR(50),
     resolution_fps INT DEFAULT 30,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS reports (
@@ -161,7 +161,7 @@ CREATE TABLE IF NOT EXISTS reports (
     completed_inspections INT DEFAULT 0,
     pending_inspections INT DEFAULT 0,
     flagged_inspections INT DEFAULT 0,
-    average_compliance_rate DOUBLE DEFAULT 0.0,
+    average_compliance_rate DOUBLE PRECISION DEFAULT 0.0,
     generated_by VARCHAR(150),
     file_format VARCHAR(20) DEFAULT 'PDF',
     download_url TEXT,

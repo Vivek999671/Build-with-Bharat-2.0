@@ -18,6 +18,7 @@ public class CCTV {
     private String location;
 
     private String status = "ONLINE"; // ONLINE, OFFLINE
+    @Column(columnDefinition = "TEXT")
     private String streamUrl; // placeholder / RTSP / HLS stream URL
     private String demoStreamType = "Demo Stream (RTSP/HLS Ready)";
 

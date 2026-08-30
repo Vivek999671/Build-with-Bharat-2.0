@@ -4,7 +4,137 @@
 
 ---
 
-## 1. System Architecture Diagram
+## 1. Complete Project File & Directory Structure
+
+```
+Build-with-Bharat-2.0/
+│
+├── README.md                                 # Master System Architecture & Execution Documentation
+│
+├── CLIENT/                                   # React Native + Expo Mobile Application
+│   ├── App.js                                # Application Root Component, Providers & Notification Init
+│   ├── index.js                              # Expo Root Registry Entry
+│   ├── app.json                              # Mobile App Config (Name, Version, Permissions, Camera/GPS)
+│   ├── package.json                          # NPM Dependencies & Build Scripts (Expo SDK 57, React 19)
+│   └── src/
+│       ├── navigation/
+│       │   └── AppNavigator.js               # React Navigation (Native Stack + 5-Tab Bottom Bar)
+│       │
+│       ├── screens/                          # 16 Complete Mobile Inspection & Monitoring Screens
+│       │   ├── SplashScreen.js               # Screen 1: Official Emblem Animation & Auto-Routing
+│       │   ├── LoginScreen.js                # Screen 2: Multi-Role Auth (Official, Inspector, NGO Staff)
+│       │   ├── HomeScreen.js                 # Screen 3 & 9: Official KPI Dashboard & Inspector Field View
+│       │   ├── ProjectsScreen.js             # Screen 4: Project Directory with Search & Filter Chips
+│       │   ├── ProjectDetailsScreen.js       # Screen 5: Scheme Details, Compliance Score & GIS Location
+│       │   ├── InspectionsScreen.js          # Screen 6: Inspection Queue with Status Tabs (Assigned, Flagged...)
+│       │   ├── InspectionDetailsScreen.js    # Screen 7: Audit Dossier, Timeline & Digital Evidence Tokens
+│       │   ├── RandomAssignmentScreen.js     # Screen 8: Rule-Based Randomized Inspector Allocation
+│       │   ├── ConductInspectionScreen.js    # Screen 10: 7-Step Field Inspection Flow (GPS, Attendance, Checklist, Geo-Photo)
+│       │   ├── LiveMonitoringScreen.js       # Screen 11: Real-time GIS Interactive Color-Coded Risk Pins
+│       │   ├── CCTVScreen.js                 # Screen 12: CCTV Grid with Online/Offline Status & Stream Frames
+│       │   ├── AlertsScreen.js               # Screen 13: Severity-Categorized Real-Time Anomaly Alerts
+│       │   ├── RiskAnalyticsScreen.js        # Screen 14: Automated Anomaly Scorecards & Risk Factors
+│       │   ├── ReportsScreen.js              # Screen 15: PDF / CSV Inspection Audit Dossier Generator
+│       │   └── ProfileScreen.js              # Screen 16: Officer Profile, Security Clearance & Logout
+│       │
+│       ├── services/
+│       │   ├── apiService.js                 # Universal REST API Client (Platform-Aware, JWT Auth, Offline Fallback)
+│       │   └── notificationService.js        # Expo Local & Push Notification Dispatcher
+│       │
+│       ├── storage/
+│       │   └── offlineStorage.js             # Local Offline Persistence Queue & Sync Engine
+│       │
+│       ├── utils/
+│       │   └── anomalyDetection.js           # Rule-Based Anomaly Scoring & Evaluation Engine
+│       │
+│       ├── theme/
+│       │   └── theme.js                      # Government Dark Green Palette, Typography & 44px+ Touch Targets
+│       │
+│       └── data/
+│           └── mockData.js                   # Realistic Government Seed & Offline Fallback Datasets
+│
+└── Backend/                                  # Java 21 / Spring Boot 3.3 Enterprise Backend
+    ├── pom.xml                               # Maven Build Configuration & Dependencies
+    └── src/
+        ├── main/
+        │   ├── resources/
+        │   │   ├── application.properties    # MySQL Production Database Configuration
+        │   │   ├── application-dev.properties# H2 In-Memory Zero-Setup Dev Configuration
+        │   │   └── schema.sql                # Relational DDL & SQL Schema
+        │   │
+        │   └── java/com/dosje/monitoring/
+        │       ├── MonitoringApplication.java # Spring Boot Main Application Entry Point
+        │       │
+        │       ├── config/                   # Security, JWT, CORS & Seed Data Initializers
+        │       │   ├── SecurityConfig.java   # Spring Security Filter Chain & RBAC Configuration
+        │       │   ├── JwtTokenProvider.java # 256-bit JWT Token Generation & Verification
+        │       │   ├── JwtAuthenticationFilter.java # Stateless Request Authorization Filter
+        │       │   ├── CorsConfig.java       # Cross-Origin Resource Sharing (CORS) Configuration
+        │       │   └── DataInitializer.java  # Auto-seeds realistic demo records on startup
+        │       │
+        │       ├── controller/               # 7 REST API Controllers
+        │       │   ├── AuthController.java   # /api/auth/login
+        │       │   ├── ProjectController.java# /api/projects, /api/projects/{id}
+        │       │   ├── InspectionController.java # /api/inspections, assign, random-assign, gps, attendance, evidence, submit
+        │       │   ├── AnalyticsController.java  # /api/analytics/dashboard, /api/analytics/risk
+        │       │   ├── AlertController.java  # /api/alerts, /api/alerts/{id}/read
+        │       │   ├── CCTVController.java   # /api/cctv
+        │       │   └── ReportController.java # /api/reports, /api/reports/generate
+        │       │
+        │       ├── service/                  # Business Logic & Algorithms
+        │       │   ├── AuthService.java      # User Authentication & Token Generation
+        │       │   ├── ProjectService.java   # Project Lifecycle & Directory Management
+        │       │   ├── InspectionService.java# Inspection Workflow & Field State Transitions
+        │       │   ├── RandomAssignmentService.java # Rule-Based Distance & Workload Allocation Algorithm
+        │       │   ├── RiskAnalysisService.java     # Dynamic Risk Scoring & Anomaly Detection Algorithm
+        │       │   ├── AnalyticsService.java # KPI Dashboard Aggregation
+        │       │   ├── AlertService.java     # Automated Alert Dispatching & Anomaly Triggers
+        │       │   ├── CCTVService.java      # Camera Status & Video Stream Verification
+        │       │   └── ReportService.java    # Audit Dossier & PDF/CSV Export Assembly
+        │       │
+        │       ├── entity/                   # 8 Relational JPA Database Entities
+        │       │   ├── User.java             # User Accounts & Officer Profiles
+        │       │   ├── Role.java             # Enums: ROLE_DOSJE_OFFICIAL, ROLE_PMU_INSPECTOR, ROLE_PROJECT_STAFF
+        │       │   ├── Project.java          # Registered Institutes, NGOs & Schemes
+        │       │   ├── Inspection.java       # Field Inspection Records & Audit Tokens
+        │       │   ├── Evidence.java         # Geo-Tagged Photos, Videos & Timestamps
+        │       │   ├── Attendance.java       # Biometric Staff & Beneficiary Verification Counts
+        │       │   ├── Alert.java            # Critical, High, Medium System Anomaly Alerts
+        │       │   ├── CCTV.java             # CCTV Surveillance Grid Feeds & Signals
+        │       │   └── Report.java           # Official Inspection Audit Reports
+        │       │
+        │       ├── repository/               # 8 Spring Data JPA Repositories
+        │       │   ├── UserRepository.java
+        │       │   ├── ProjectRepository.java
+        │       │   ├── InspectionRepository.java
+        │       │   ├── EvidenceRepository.java
+        │       │   ├── AttendanceRepository.java
+        │       │   ├── AlertRepository.java
+        │       │   ├── CCTVRepository.java
+        │       │   └── ReportRepository.java
+        │       │
+        │       └── dto/                      # Data Transfer Objects (Request/Response Payloads)
+        │           ├── ApiResponse.java      # Universal Standard JSON Response Wrapper
+        │           ├── LoginRequest.java     # Login Payload (username/officialId, password)
+        │           ├── LoginResponse.java    # Login Result (JWT Token, User Profile, Roles)
+        │           ├── AssignInspectionRequest.java
+        │           ├── RandomAssignRequest.java
+        │           ├── GPSVerificationRequest.java
+        │           ├── AttendanceVerificationRequest.java
+        │           ├── EvidenceRequest.java
+        │           ├── InspectionSubmitRequest.java
+        │           ├── DashboardStatsDTO.java
+        │           └── RiskAnalyticsDTO.java
+        │
+        └── test/                             # Automated Unit & Integration Tests
+            └── java/com/dosje/monitoring/
+                ├── MonitoringApplicationTests.java # Context Load & Startup Tests
+                └── ApiControllerTests.java         # 12 REST API & Security Filter Tests
+```
+
+---
+
+## 2. System Architecture Diagram
 
 ```mermaid
 flowchart TD
@@ -24,7 +154,7 @@ flowchart TD
     end
 
     subgraph Persistence ["Data & Storage Layer"]
-        MySQL[("MySQL Database (Production)<br/>• 8 Relational Relational Entities")]
+        MySQL[("MySQL Database (Production)<br/>• 8 Relational Entities")]
         H2[("H2 In-Memory DB (Dev / Demo)<br/>• Zero-Setup Self-Seeding")]
     end
 
@@ -42,9 +172,9 @@ flowchart TD
 
 ---
 
-## 2. Layer-by-Layer Architectural Breakdown
+## 3. Layer-by-Layer Architectural Breakdown
 
-### **Layer 1: Presentation & Mobile UX Layer**
+### **Layer 1: Presentation & Mobile UX Layer (`CLIENT/src/screens`)**
 - **Framework**: React Native with Expo SDK 57 (React 19, React Native 0.86).
 - **Navigation Structure**:
   - `BottomTabNavigator`: 5 main tabs (*Home, Inspections, Projects, Alerts, Profile*).
@@ -78,7 +208,7 @@ flowchart TD
 
 ---
 
-## 3. Inspection Lifecycle Data Flow
+## 4. Inspection Lifecycle Data Flow
 
 ```
 [DoSJE Official / Central Cell]
@@ -108,7 +238,7 @@ flowchart TD
 
 ---
 
-## 4. REST API Endpoint Map
+## 5. REST API Endpoint Map
 
 | Category | Route | Method | Purpose |
 | :--- | :--- | :--- | :--- |
@@ -131,7 +261,7 @@ flowchart TD
 
 ---
 
-## 5. Execution Guide
+## 6. Execution Guide
 
 ### Backend:
 ```bash

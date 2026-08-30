@@ -26,6 +26,7 @@ public class Attendance {
 
     private Boolean isVerified = true;
     private Boolean anomalyDetected = false;
+    @Column(columnDefinition = "TEXT")
     private String anomalyReason;
 
     private LocalDateTime recordedAt = LocalDateTime.now();
