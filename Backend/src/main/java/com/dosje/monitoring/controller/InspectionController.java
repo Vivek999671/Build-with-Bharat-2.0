@@ -64,12 +64,12 @@ public class InspectionController {
     }
 
     @PostMapping("/{id}/gps")
-    public ResponseEntity<ApiResponse<Inspection>> verifyGPS(
+    public ResponseEntity<ApiResponse<GPSVerificationResponse>> verifyGPS(
             @PathVariable String id,
             @Valid @RequestBody GPSVerificationRequest request) {
         try {
-            Inspection updated = inspectionService.verifyGPS(id, request);
-            return ResponseEntity.ok(ApiResponse.ok("GPS location verified and geo-tagged successfully", updated));
+            GPSVerificationResponse response = inspectionService.verifyGPS(id, request);
+            return ResponseEntity.ok(ApiResponse.ok(response.getMessage(), response));
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         }

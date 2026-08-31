@@ -2,13 +2,22 @@
 DoSJE Real-Time Monitoring & Digital Inspection Mobile App - FRONTEND (React Native)
 ================================================================================
 
-Total Files: 31
+Total Files: 32
 
 ================================================================================
 FILE: CLIENT/.env
 ================================================================================
 
-EXPO_PUBLIC_API_URL=https://nails-eos-checks-mil.trycloudflare.com/api
+EXPO_PUBLIC_API_URL=https://courier-driven-transportation-internationally.trycloudflare.com/api
+
+
+--------------------------------------------------------------------------------
+
+================================================================================
+FILE: CLIENT/.enves
+================================================================================
+
+EXPO_PUBLIC_API_URL=https://legislation-recommendations-evidence-novelty.trycloudflare.com/api
 
 
 --------------------------------------------------------------------------------
@@ -167,7 +176,8 @@ FILE: CLIENT/app.json
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font"
     ]
   }
 }
@@ -208,6 +218,7 @@ FILE: CLIENT/package.json
     "expo": "~57.0.18",
     "expo-camera": "~57.0.4",
     "expo-file-system": "~57.0.6",
+    "expo-font": "~57.0.2",
     "expo-image-picker": "~57.0.14",
     "expo-location": "~57.0.14",
     "expo-notifications": "~57.0.15",
@@ -216,7 +227,8 @@ FILE: CLIENT/package.json
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0"
+    "react-native-screens": "~4.26.0",
+    "react-native-webview": "13.16.1"
   },
   "scripts": {
     "start": "expo start",
@@ -1360,6 +1372,20 @@ import { sendLocalNotification } from '../services/notificationService';
 import { saveInspectionLocally } from '../storage/offlineStorage';
 import { ApiService } from '../services/apiService';
 
+function calculateHaversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function ConductInspectionScreen({ navigation, route }) {
   const inspection = route.params?.inspection || MOCK_INSPECTIONS[0];
   const project = route.params?.project || MOCK_PROJECTS.find(p => p.id === inspection.projectId) || MOCK_PROJECTS[0];
@@ -1404,7 +1430,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
       uri: 'https://images.unsplash.com/photo-1577495508048-b635879837f1?w=400',
       name: 'Building_Entrance_GeoTag.jpg',
       timestamp: '11:35 AM',
-      coordinates: '18.5204° N, 73.8567° E',
+      coordinates: 'Geo-tagged on capture',
       type: 'photo',
     },
     {
@@ -1412,7 +1438,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
       uri: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=400',
       name: 'Classroom_Attendance_Biometric.jpg',
       timestamp: '11:42 AM',
-      coordinates: '18.5205° N, 73.8568° E',
+      coordinates: 'Geo-tagged on capture',
       type: 'photo',
     },
   ]);
@@ -1440,39 +1466,123 @@ export default function ConductInspectionScreen({ navigation, route }) {
   const attendanceRate = total > 0 ? Math.round((present / total) * 100) : 0;
   const isAnomaly = attendanceRate < 80;
 
-  // GPS Capture Handler
+  // GPS Capture Handler with Authoritative Backend Haversine Distance
   const handleCaptureGPS = async () => {
     setGpsLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        // Fallback realistic coordinates for demo
-        setGpsData({
-          latitude: 18.5204,
-          longitude: 73.8567,
-          accuracy: 6.4,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          verified: true,
-        });
-        Alert.alert('Location Captured', 'Coordinates verified via e-NirikShan Geo-Lock.');
+        Alert.alert(
+          'Location Permission Denied',
+          'GPS location access is strictly required to verify physical presence at the project geofence.'
+        );
+        setGpsLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const deviceLat = Number(loc.coords.latitude);
+      const deviceLng = Number(loc.coords.longitude);
+      const sensorAccuracy = Number(loc.coords.accuracy?.toFixed(1) || 8.0);
+      const timestampStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      // Target project coordinates from inspection or project
+      const targetLat = inspection.latitude != null
+        ? Number(inspection.latitude)
+        : project.latitude != null
+        ? Number(project.latitude)
+        : project.coordinates?.latitude != null
+        ? Number(project.coordinates.latitude)
+        : null;
+
+      const targetLng = inspection.longitude != null
+        ? Number(inspection.longitude)
+        : project.longitude != null
+        ? Number(project.longitude)
+        : project.coordinates?.longitude != null
+        ? Number(project.coordinates.longitude)
+        : null;
+
+      // Required Debugging Logs
+      console.log('=== DEVICE GPS ===');
+      console.log('latitude =', deviceLat);
+      console.log('longitude =', deviceLng);
+      console.log('accuracy =', sensorAccuracy, 'meters');
+      console.log('=== INSPECTION ===');
+      console.log('id =', inspection.id);
+      console.log('targetLatitude =', targetLat);
+      console.log('targetLongitude =', targetLng);
+
+      if (targetLat == null || targetLng == null) {
+        Alert.alert(
+          'Target Coordinates Missing',
+          'This project does not have target GPS coordinates configured in the registry. Geofence verification cannot proceed.'
+        );
+        setGpsLoading(false);
+        return;
+      }
+
+      // Compute client-side Haversine distance
+      const localDistanceMeters = calculateHaversineDistanceMeters(deviceLat, deviceLng, targetLat, targetLng);
+      let isVerified = localDistanceMeters <= 150.0;
+      let finalDistance = localDistanceMeters;
+      let threshold = 150.0;
+
+      // Call Backend REST API for authoritative server-side verification and audit trail
+      try {
+        const apiRes = await ApiService.verifyGPS(
+          inspection.id,
+          deviceLat,
+          deviceLng,
+          sensorAccuracy,
+          new Date().toISOString()
+        );
+
+        if (apiRes && apiRes.data) {
+          isVerified = apiRes.data.gpsVerified === true;
+          if (apiRes.data.distanceMeters != null) {
+            finalDistance = apiRes.data.distanceMeters;
+          }
+          if (apiRes.data.thresholdMeters != null) {
+            threshold = apiRes.data.thresholdMeters;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Backend GPS API verification failed or offline:', apiErr.message);
+      }
+
+      const formattedDistance = finalDistance >= 1000
+        ? `${(finalDistance / 1000).toFixed(2)} km`
+        : `${Math.round(finalDistance)} meters`;
+
+      setGpsData({
+        latitude: Number(deviceLat.toFixed(4)),
+        longitude: Number(deviceLng.toFixed(4)),
+        rawLatitude: deviceLat,
+        rawLongitude: deviceLng,
+        accuracy: sensorAccuracy,
+        timestamp: timestampStr,
+        distanceMeters: Math.round(finalDistance * 10) / 10,
+        formattedDistance,
+        targetLatitude: targetLat,
+        targetLongitude: targetLng,
+        thresholdMeters: threshold,
+        verified: isVerified,
+      });
+
+      if (isVerified) {
+        Alert.alert(
+          'GPS Verification Successful',
+          `Verified within authorized geofence for ${project.name || 'project'}.\n\nDistance: ${formattedDistance} (Threshold: ${threshold}m)`
+        );
       } else {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setGpsData({
-          latitude: Number(loc.coords.latitude.toFixed(4)),
-          longitude: Number(loc.coords.longitude.toFixed(4)),
-          accuracy: Number(loc.coords.accuracy?.toFixed(1) || 8.0),
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          verified: true,
-        });
+        Alert.alert(
+          'GPS Verification Failed',
+          `You are ${formattedDistance} away from ${project.name || 'the project site'}.\n\nPhysical presence within ${threshold}m is required to verify the geofence.`
+        );
       }
     } catch (e) {
-      setGpsData({
-        latitude: 18.5204,
-        longitude: 73.8567,
-        accuracy: 7.2,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        verified: true,
-      });
+      Alert.alert('GPS Capture Error', 'Could not obtain location from device: ' + e.message);
     } finally {
       setGpsLoading(false);
     }
@@ -1507,7 +1617,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
           uri: asset.uri,
           name: fileName,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          coordinates: gpsData ? `${gpsData.latitude}° N, ${gpsData.longitude}° E` : '18.5204° N, 73.8567° E',
+          coordinates: gpsData ? `${gpsData.latitude}° N, ${gpsData.longitude}° E` : 'Coordinates pending',
           type: 'photo',
         };
         setEvidenceList((prev) => [...prev, newEvidence]);
@@ -1517,9 +1627,9 @@ export default function ConductInspectionScreen({ navigation, route }) {
           const uploadRes = await ApiService.uploadEvidenceFile(inspection.id, asset.uri, {
             fileName,
             mediaType: 'IMAGE',
-            latitude: gpsData?.latitude || 18.5204,
-            longitude: gpsData?.longitude || 73.8567,
-            accuracyMeters: gpsData?.accuracy || 6.4,
+            latitude: gpsData?.rawLatitude || gpsData?.latitude || null,
+            longitude: gpsData?.rawLongitude || gpsData?.longitude || null,
+            accuracyMeters: gpsData?.accuracy || null,
             capturedTimestamp: new Date().toISOString(),
             caption: `Geo-Tagged Field Photo for ${project.name}`,
           });
@@ -1546,7 +1656,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
       id: inspection.id,
       projectId: project.id,
       projectName: project.name,
-      gps: gpsData || { latitude: 18.5204, longitude: 73.8567, accuracy: 6.4 },
+      gps: gpsData || null,
       attendanceRate,
       presentStaff: parseInt(presentStaff, 10) || 0,
       totalStaff: parseInt(totalStaff, 10) || 0,
@@ -1645,34 +1755,75 @@ export default function ConductInspectionScreen({ navigation, route }) {
             </Text>
 
             {gpsData ? (
-              <View style={styles.gpsVerifiedCard}>
+              <View style={[styles.gpsVerifiedCard, !gpsData.verified && styles.gpsUnverifiedCard]}>
                 <View style={styles.gpsVerifiedHeader}>
-                  <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-                  <Text style={styles.gpsVerifiedTitle}>GPS Coordinates Verified</Text>
+                  <Ionicons
+                    name={gpsData.verified ? 'checkmark-circle' : 'alert-circle'}
+                    size={24}
+                    color={gpsData.verified ? COLORS.success : COLORS.critical}
+                  />
+                  <Text
+                    style={[
+                      styles.gpsVerifiedTitle,
+                      !gpsData.verified && { color: COLORS.criticalText },
+                    ]}
+                  >
+                    {gpsData.verified ? 'GPS Coordinates Verified' : 'Geofence Verification Failed'}
+                  </Text>
                 </View>
 
                 <View style={styles.coordsGrid}>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>LATITUDE</Text>
+                    <Text style={styles.coordsLabel}>DEVICE LATITUDE</Text>
                     <Text style={styles.coordsVal}>{gpsData.latitude}° N</Text>
                   </View>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>LONGITUDE</Text>
+                    <Text style={styles.coordsLabel}>DEVICE LONGITUDE</Text>
                     <Text style={styles.coordsVal}>{gpsData.longitude}° E</Text>
                   </View>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>ACCURACY</Text>
-                    <Text style={styles.coordsVal}>{gpsData.accuracy} meters</Text>
+                    <Text style={styles.coordsLabel}>GPS ACCURACY</Text>
+                    <Text style={styles.coordsVal}>{gpsData.accuracy} m (Sensor)</Text>
                   </View>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>TIMESTAMP</Text>
-                    <Text style={styles.coordsVal}>{gpsData.timestamp}</Text>
+                    <Text style={styles.coordsLabel}>DISTANCE TO SITE</Text>
+                    <Text
+                      style={[
+                        styles.coordsVal,
+                        !gpsData.verified && { color: COLORS.criticalText, fontWeight: '800' },
+                      ]}
+                    >
+                      {gpsData.formattedDistance}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={styles.geofenceMatch}>
-                  <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
-                  <Text style={styles.geofenceMatchText}>Within Authorized Geofence (Distance: 12m)</Text>
+                <View
+                  style={[
+                    styles.geofenceMatch,
+                    !gpsData.verified && styles.geofenceMismatch,
+                  ]}
+                >
+                  <Ionicons
+                    name={gpsData.verified ? 'shield-checkmark' : 'shield-outline'}
+                    size={16}
+                    color={gpsData.verified ? COLORS.success : COLORS.critical}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.geofenceMatchText,
+                        !gpsData.verified && { color: COLORS.criticalText, fontWeight: '800' },
+                      ]}
+                    >
+                      {gpsData.verified
+                        ? `Within Authorized Geofence (Distance: ${gpsData.formattedDistance})`
+                        : `Outside Authorized Geofence (Distance: ${gpsData.formattedDistance})`}
+                    </Text>
+                    <Text style={styles.geofenceSubText}>
+                      Target Site: {gpsData.targetLatitude}° N, {gpsData.targetLongitude}° E • Threshold: {gpsData.thresholdMeters}m
+                    </Text>
+                  </View>
                 </View>
               </View>
             ) : (
@@ -1705,7 +1856,24 @@ export default function ConductInspectionScreen({ navigation, route }) {
 
             <TouchableOpacity
               style={styles.nextStepBtn}
-              onPress={() => setActiveStep(2)}
+              onPress={() => {
+                if (!gpsData) {
+                  Alert.alert('GPS Required', 'Please capture your real-time GPS location before proceeding.');
+                  return;
+                }
+                if (!gpsData.verified) {
+                  Alert.alert(
+                    'Geofence Warning',
+                    `You are ${gpsData.formattedDistance} away from the project site (Threshold: ${gpsData.thresholdMeters}m).\n\nProceeding without physical on-site presence will flag this audit dossier with a Location Anomaly tag.`,
+                    [
+                      { text: 'Recapture GPS', style: 'cancel' },
+                      { text: 'Proceed as Flagged', style: 'destructive', onPress: () => setActiveStep(2) },
+                    ]
+                  );
+                  return;
+                }
+                setActiveStep(2);
+              }}
             >
               <Text style={styles.nextStepBtnText}>Continue to Attendance Verification</Text>
               <Ionicons name="arrow-forward" size={16} color="#ffffff" />
@@ -2110,10 +2278,20 @@ export default function ConductInspectionScreen({ navigation, route }) {
             {/* Checklist items verification */}
             <View style={styles.summaryList}>
               <View style={styles.summaryItem}>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                <Ionicons
+                  name={gpsData?.verified ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={gpsData?.verified ? COLORS.success : COLORS.critical}
+                />
                 <View style={styles.summaryItemTextWrap}>
-                  <Text style={styles.summaryItemTitle}>GPS Geo-Lock Verified</Text>
-                  <Text style={styles.summaryItemSub}>18.5204° N, 73.8567° E (Within geofence)</Text>
+                  <Text style={styles.summaryItemTitle}>
+                    {gpsData?.verified ? 'GPS Geo-Lock Verified' : 'GPS Geo-Lock Flagged Out-of-Bounds'}
+                  </Text>
+                  <Text style={styles.summaryItemSub}>
+                    {gpsData
+                      ? `${gpsData.latitude}° N, ${gpsData.longitude}° E • Distance: ${gpsData.formattedDistance} (${gpsData.verified ? 'Verified' : 'Flagged'})`
+                      : 'GPS lock not captured'}
+                  </Text>
                 </View>
               </View>
 
@@ -2211,7 +2389,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
               style={styles.successDoneBtn}
               onPress={() => {
                 setSuccessModalVisible(false);
-                navigation.navigate('InspectionsTab');
+                navigation.navigate('MainTabs', { screen: 'InspectionsTab' });
               }}
             >
               <Text style={styles.successDoneText}>Return to Inspections Hub</Text>
@@ -2387,6 +2565,10 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 14,
   },
+  gpsUnverifiedCard: {
+    backgroundColor: COLORS.criticalBg,
+    borderColor: '#fca5a5',
+  },
   gpsVerifiedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2426,10 +2608,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#bbf7d0',
   },
+  geofenceMismatch: {
+    borderTopColor: '#fecaca',
+  },
   geofenceMatchText: {
     fontSize: 11,
     color: COLORS.successText,
     fontWeight: '600',
+  },
+  geofenceSubText: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   gpsButton: {
     backgroundColor: COLORS.primary,
@@ -3098,7 +3288,7 @@ export default function HomeScreen({ navigation, route }) {
                   onPress={() =>
                     Alert.alert(
                       'Turn-by-Turn Navigation',
-                      `Opening GPS Navigation to ${upcomingInspection.projectName} (${upcomingInspection.distance || '14.2 km'}). Coordinates: 18.5204, 73.8567`
+                      `Opening GPS Navigation to ${upcomingInspection.projectName} (${upcomingInspection.distance || 'Distance pending'}). Coordinates: ${upcomingInspection.latitude ?? 'N/A'}° N, ${upcomingInspection.longitude ?? 'N/A'}° E`
                     )
                   }
                 >
@@ -3153,7 +3343,7 @@ export default function HomeScreen({ navigation, route }) {
 
               <TouchableOpacity
                 style={[styles.statCard, { borderLeftColor: COLORS.success }]}
-                onPress={() => navigation.navigate('InspectionsTab')}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
                 activeOpacity={0.8}
               >
                 <View style={styles.statTopRow}>
@@ -3170,7 +3360,7 @@ export default function HomeScreen({ navigation, route }) {
 
               <TouchableOpacity
                 style={[styles.statCard, { borderLeftColor: COLORS.warning }]}
-                onPress={() => navigation.navigate('InspectionsTab')}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
                 activeOpacity={0.8}
               >
                 <View style={styles.statTopRow}>
@@ -4188,7 +4378,11 @@ export default function InspectionDetailsScreen({ navigation, route }) {
             <View style={styles.infoCol}>
               <Text style={styles.infoLabel}>GPS Coordinates</Text>
               <Text style={styles.infoValue}>
-                {inspection.coordinates.latitude}, {inspection.coordinates.longitude}
+                {inspection.latitude != null && inspection.longitude != null
+                  ? `${inspection.latitude}° N, ${inspection.longitude}° E`
+                  : inspection.coordinates?.latitude != null && inspection.coordinates?.longitude != null
+                  ? `${inspection.coordinates.latitude}° N, ${inspection.coordinates.longitude}° E`
+                  : 'Location unavailable'}
               </Text>
             </View>
           </View>
@@ -5059,110 +5253,485 @@ const styles = StyleSheet.create({
 FILE: CLIENT/src/screens/LiveMonitoringScreen.js
 ================================================================================
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_PROJECTS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 const { width } = Dimensions.get('window');
 
+// Available Real GIS Map Layers (100% Free & Open, No API Keys Required)
+const MAP_LAYERS = [
+  { id: 'streets', name: 'Street Map', icon: 'map-outline' },
+  { id: 'satellite', name: 'Satellite', icon: 'planet-outline' },
+  { id: 'topo', name: 'Topography', icon: 'earth-outline' },
+];
+
 export default function LiveMonitoringScreen({ navigation }) {
+  const [projectsList, setProjectsList] = useState(MOCK_PROJECTS);
   const [selectedProject, setSelectedProject] = useState(MOCK_PROJECTS[0]);
+  const [activeLayer, setActiveLayer] = useState('streets');
+  const [loading, setLoading] = useState(false);
+  const webViewRef = useRef(null);
+
+  // Fetch live projects from backend REST API
+  const fetchLiveProjects = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await ApiService.getProjects('All');
+      if (data && data.length > 0) {
+        setProjectsList(data);
+        setSelectedProject(data[0]);
+      }
+    } catch (e) {
+      console.warn('Could not load live projects for GIS map, using fallback data:', e.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchLiveProjects();
+  }, [fetchLiveProjects]);
+
+  // Handle messages from Leaflet (e.g., marker tapped)
+  const handleWebViewMessage = (event) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'SELECT_PROJECT') {
+        const found = projectsList.find(p => p.id === data.id);
+        if (found) {
+          setSelectedProject(found);
+        }
+      }
+    } catch (e) {
+      console.warn('Error parsing WebView message:', e);
+    }
+  };
+
+  // Switch Tile Layer via WebView JavaScript Injection
+  const handleSelectLayer = (layerId) => {
+    setActiveLayer(layerId);
+    if (webViewRef.current) {
+      webViewRef.current.injectJavaScript(`
+        if (window.switchLayer) {
+          window.switchLayer('${layerId}');
+        }
+        true;
+      `);
+    }
+  };
+
+  // Recenter / Focus Map
+  const handleRecenter = () => {
+    if (webViewRef.current) {
+      if (selectedProject) {
+        const lat = selectedProject.latitude ?? selectedProject.coordinates?.latitude;
+        const lng = selectedProject.longitude ?? selectedProject.coordinates?.longitude;
+        if (lat != null && lng != null) {
+          webViewRef.current.injectJavaScript(`
+            if (window.focusProject) {
+              window.focusProject(${lat}, ${lng});
+            }
+            true;
+          `);
+          return;
+        }
+      }
+      webViewRef.current.injectJavaScript(`
+        if (window.fitAllMarkers) {
+          window.fitAllMarkers();
+        }
+        true;
+      `);
+    }
+  };
+
+  // Dynamic statistics from live projects
+  const onlineCount = projectsList.filter(p => p.cctvStatus === 'ONLINE').length || 112;
+  const highRiskCount = projectsList.filter(p => (p.riskScore || 0) >= 70).length || 8;
+  const activeAuditsCount = projectsList.length > 0 ? Math.round(projectsList.length * 0.4) : 24;
+
+  // Filter projects with valid coordinates
+  const validProjects = projectsList.filter(p => {
+    const lat = p.latitude ?? p.coordinates?.latitude;
+    const lng = p.longitude ?? p.coordinates?.longitude;
+    return lat != null && lng != null;
+  });
+
+  // Generate Leaflet HTML with 100% Free & Open Geographic Tile Providers
+  const leafletHTML = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #map {
+          width: 100%;
+          height: 100%;
+          background-color: #f1f5f9;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          -moz-osx-font-smoothing: grayscale;
+          text-rendering: optimizeLegibility;
+          overflow: hidden;
+        }
+
+        .custom-div-icon {
+          background: none;
+          border: none;
+        }
+
+        .marker-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          cursor: pointer;
+          position: relative;
+        }
+
+        .marker-pin {
+          width: 34px;
+          height: 34px;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2.5px solid #ffffff;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+          transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .marker-icon-inner {
+          transform: rotate(45deg);
+          color: #ffffff;
+          font-size: 14px;
+          font-weight: 900;
+          line-height: 1;
+        }
+
+        .marker-tag {
+          background: rgba(255, 255, 255, 0.96);
+          color: #0f172a;
+          font-size: 10px;
+          font-weight: 800;
+          padding: 2px 7px;
+          border-radius: 6px;
+          margin-top: 4px;
+          box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+          white-space: nowrap;
+          border: 0.5px solid #cbd5e1;
+          letter-spacing: 0.3px;
+        }
+
+        .marker-container.active .marker-pin {
+          transform: rotate(-45deg) scale(1.22);
+          border-color: #0f172a;
+          box-shadow: 0 0 0 4px rgba(15, 23, 42, 0.25), 0 6px 16px rgba(0, 0, 0, 0.45);
+        }
+
+        .pulse-ring {
+          position: absolute;
+          width: 44px;
+          height: 44px;
+          border-radius: 50%;
+          top: -5px;
+          left: 8px;
+          border: 2.5px solid #dc2626;
+          animation: markerPulse 1.8s infinite ease-out;
+          pointer-events: none;
+        }
+
+        @keyframes markerPulse {
+          0% { transform: scale(0.6); opacity: 1; }
+          100% { transform: scale(1.6); opacity: 0; }
+        }
+
+        .leaflet-popup-content-wrapper {
+          border-radius: 12px;
+          padding: 6px;
+          box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+          border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+
+        .popup-content {
+          min-width: 160px;
+          padding: 2px;
+        }
+
+        .popup-header {
+          font-size: 13px;
+          font-weight: 800;
+          color: #0f172a;
+          margin-bottom: 2px;
+        }
+
+        .popup-location {
+          font-size: 11px;
+          color: #64748b;
+          margin-bottom: 6px;
+          font-weight: 500;
+        }
+
+        .popup-footer {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding-top: 4px;
+          border-top: 1px solid #f1f5f9;
+        }
+
+        .popup-badge {
+          padding: 2px 7px;
+          border-radius: 5px;
+          font-size: 10px;
+          font-weight: 800;
+          letter-spacing: 0.2px;
+        }
+
+        .popup-gps {
+          font-size: 9px;
+          color: #94a3b8;
+          font-family: monospace;
+        }
+      </style>
+    </head>
+    <body>
+      <div id="map"></div>
+      <script>
+        // 1. Street Map: OpenStreetMap Standard (100% Public, Free, Zero API Keys)
+        var streetsLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        });
+
+        // 2. Satellite Layer: Esri World Imagery (Public REST Service, Zero API Keys)
+        var satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19,
+          attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        });
+
+        // 3. Topography Layer: Esri World Topo Map (Public REST Service, Zero API Keys)
+        var topoLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+          maxZoom: 19,
+          attribution: 'Tiles &copy; Esri &mdash; Sources: Esri, HERE, Garmin, Intermap'
+        });
+
+        var tileLayers = {
+          streets: streetsLayer,
+          satellite: satelliteLayer,
+          topo: topoLayer
+        };
+
+        // Initialize Map centered on Maharashtra / Western India
+        var map = L.map('map', {
+          zoomControl: false,
+          attributionControl: false,
+          fadeAnimation: true,
+          zoomAnimation: true
+        }).setView([19.7515, 75.7139], 7);
+
+        // Add Active Layer (defaults to OpenStreetMap streets)
+        var currentLayer = tileLayers['${activeLayer}'] || streetsLayer;
+        currentLayer.addTo(map);
+
+        // Switch Tile Layer Handler
+        window.switchLayer = function(layerKey) {
+          if (tileLayers[layerKey] && tileLayers[layerKey] !== currentLayer) {
+            map.removeLayer(currentLayer);
+            currentLayer = tileLayers[layerKey];
+            currentLayer.addTo(map);
+          }
+        };
+
+        // Render Real Geographic Project Markers
+        var projects = ${JSON.stringify(validProjects)};
+        var markersGroup = L.featureGroup();
+        var markerRefs = {};
+
+        projects.forEach(function(proj) {
+          var lat = proj.latitude !== undefined ? proj.latitude : (proj.coordinates ? proj.coordinates.latitude : null);
+          var lng = proj.longitude !== undefined ? proj.longitude : (proj.coordinates ? proj.coordinates.longitude : null);
+
+          if (lat != null && lng != null) {
+            var risk = proj.riskScore || 0;
+            var isCrit = risk >= 75;
+            var isMed = risk >= 50 && risk < 75;
+            var markerColor = isCrit ? '#dc2626' : (isMed ? '#f59e0b' : '#16a34a');
+            var badgeBg = isCrit ? '#fee2e2' : (isMed ? '#fef3c7' : '#f0fdf4');
+            var badgeColor = isCrit ? '#991b1b' : (isMed ? '#92400e' : '#166534');
+
+            var customIcon = L.divIcon({
+              className: 'custom-div-icon',
+              html: '<div class="marker-container" id="marker-' + proj.id + '" onclick="onMarkerClick(\\'' + proj.id + '\\')">' +
+                      (isCrit ? '<div class="pulse-ring"></div>' : '') +
+                      '<div class="marker-pin" style="background-color: ' + markerColor + ';">' +
+                        '<span class="marker-icon-inner">📍</span>' +
+                      '</div>' +
+                      '<div class="marker-tag">' + proj.id + '</div>' +
+                    '</div>',
+              iconSize: [60, 52],
+              iconAnchor: [30, 34]
+            });
+
+            var marker = L.marker([lat, lng], { icon: customIcon });
+
+            var popupContent = '<div class="popup-content">' +
+                                 '<div class="popup-header">' + (proj.name || proj.id) + '</div>' +
+                                 '<div class="popup-location">📍 ' + (proj.location || proj.district || 'Maharashtra') + '</div>' +
+                                 '<div class="popup-footer">' +
+                                   '<span class="popup-badge" style="background-color: ' + badgeBg + '; color: ' + badgeColor + ';">' +
+                                     'Risk: ' + risk + '/100' +
+                                   '</span>' +
+                                   '<span class="popup-gps">' + Number(lat).toFixed(3) + '°, ' + Number(lng).toFixed(3) + '°</span>' +
+                                 '</div>' +
+                               '</div>';
+
+            marker.bindPopup(popupContent, { offset: [0, -25] });
+            markersGroup.addLayer(marker);
+            markerRefs[proj.id] = marker;
+          }
+        });
+
+        markersGroup.addTo(map);
+
+        // Fit map bounds to encompass all real project locations
+        if (markersGroup.getLayers().length > 0) {
+          map.fitBounds(markersGroup.getBounds().pad(0.18));
+        }
+
+        window.onMarkerClick = function(projId) {
+          document.querySelectorAll('.marker-container').forEach(function(el) {
+            el.classList.remove('active');
+          });
+          var targetEl = document.getElementById('marker-' + projId);
+          if (targetEl) {
+            targetEl.classList.add('active');
+          }
+
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'SELECT_PROJECT',
+              id: projId
+            }));
+          }
+        };
+
+        window.focusProject = function(lat, lng) {
+          map.flyTo([lat, lng], 13, { duration: 1.2 });
+        };
+
+        window.fitAllMarkers = function() {
+          if (markersGroup.getLayers().length > 0) {
+            map.fitBounds(markersGroup.getBounds().pad(0.18), { duration: 1.0 });
+          } else {
+            map.setView([19.7515, 75.7139], 7);
+          }
+        };
+      </script>
+    </body>
+    </html>
+  `;
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
       {/* Top Status Strip */}
       <View style={styles.statusStrip}>
         <View style={styles.statusItem}>
-          <Text style={styles.statusVal}>112</Text>
+          <Text style={styles.statusVal}>{onlineCount}</Text>
           <Text style={styles.statusLbl}>Online Projects</Text>
         </View>
         <View style={styles.statusDivider} />
         <View style={styles.statusItem}>
-          <Text style={[styles.statusVal, { color: COLORS.info }]}>24</Text>
+          <Text style={[styles.statusVal, { color: COLORS.info }]}>{activeAuditsCount}</Text>
           <Text style={styles.statusLbl}>Active Audits</Text>
         </View>
         <View style={styles.statusDivider} />
         <View style={styles.statusItem}>
-          <Text style={[styles.statusVal, { color: COLORS.critical }]}>8</Text>
+          <Text style={[styles.statusVal, { color: COLORS.critical }]}>{highRiskCount}</Text>
           <Text style={styles.statusLbl}>High Risk</Text>
         </View>
       </View>
 
-      {/* Simulated GIS Interactive Map Canvas */}
-      <View style={styles.mapCanvas}>
-        {/* Map Grid Background Pattern */}
-        <View style={styles.mapGridPattern} />
+      {/* GIS Map Container */}
+      <View style={styles.mapContainer}>
+        {/* Real Leaflet OpenStreetMap WebView */}
+        <WebView
+          ref={webViewRef}
+          originWhitelist={['*']}
+          source={{ html: leafletHTML }}
+          style={styles.webView}
+          onMessage={handleWebViewMessage}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          startInLoadingState={true}
+          renderLoading={() => (
+            <View style={styles.loadingOverlay}>
+              <ActivityIndicator size="large" color={COLORS.primary} />
+              <Text style={styles.loadingText}>Loading GIS Map...</Text>
+            </View>
+          )}
+        />
 
-        {/* Map Overlay Header */}
-        <View style={styles.mapControls}>
+        {/* Map Header Floating Overlay */}
+        <View style={styles.mapControlsHeader}>
           <View style={styles.gpsLockTag}>
             <View style={styles.pulseDot} />
-            <Text style={styles.gpsLockText}>GIS Live Feed Active • Maharashtra Region</Text>
+            <Text style={styles.gpsLockText}>
+              GIS OpenStreetMap • {validProjects.length} Units Mapped
+            </Text>
           </View>
+
           <TouchableOpacity
-            style={styles.refreshMapBtn}
-            onPress={() => setSelectedProject(MOCK_PROJECTS[0])}
+            style={styles.recenterBtn}
+            onPress={handleRecenter}
+            activeOpacity={0.8}
           >
-            <Ionicons name="locate" size={18} color={COLORS.primary} />
+            <Ionicons name="locate" size={20} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
 
-        {/* Interactive GIS Markers */}
-        <View style={styles.markersContainer}>
-          {MOCK_PROJECTS.map((proj, idx) => {
-            const isSelected = selectedProject.id === proj.id;
-            const isCrit = proj.riskScore >= 75;
-            const isMed = proj.riskScore >= 50 && proj.riskScore < 75;
-
-            const markerColor = isCrit
-              ? COLORS.critical
-              : isMed
-              ? COLORS.warning
-              : COLORS.success;
-
-            // Positioning on simulated canvas
-            const topPositions = [50, 130, 210, 290];
-            const leftPositions = [40, 160, 240, 90];
-
+        {/* Floating Layer Switcher Palette */}
+        <View style={styles.layerSelector}>
+          {MAP_LAYERS.map((layer) => {
+            const isCurrent = activeLayer === layer.id;
             return (
               <TouchableOpacity
-                key={proj.id}
-                style={[
-                  styles.markerWrap,
-                  {
-                    top: topPositions[idx % 4],
-                    left: leftPositions[idx % 4],
-                  },
-                ]}
-                onPress={() => setSelectedProject(proj)}
-                activeOpacity={0.8}
+                key={layer.id}
+                style={[styles.layerBtn, isCurrent && styles.layerBtnActive]}
+                onPress={() => handleSelectLayer(layer.id)}
+                activeOpacity={0.7}
               >
-                <View
-                  style={[
-                    styles.markerBubble,
-                    { backgroundColor: markerColor },
-                    isSelected && styles.markerBubbleSelected,
-                  ]}
-                >
-                  <Ionicons name="business" size={14} color="#ffffff" />
-                </View>
-                <Text style={styles.markerLabel}>{proj.id}</Text>
+                <Ionicons
+                  name={layer.icon}
+                  size={14}
+                  color={isCurrent ? '#ffffff' : COLORS.textSecondary}
+                />
+                <Text style={[styles.layerBtnText, isCurrent && styles.layerBtnTextActive]}>
+                  {layer.name}
+                </Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
-        {/* Selected Project Quick Card */}
+        {/* Selected Project Quick Action Card */}
         {selectedProject && (
           <View style={styles.selectedProjectCard}>
             <View style={styles.selectedTopRow}>
@@ -5174,9 +5743,9 @@ export default function LiveMonitoringScreen({ navigation }) {
                   styles.selectedRiskBadge,
                   {
                     backgroundColor:
-                      selectedProject.riskScore >= 75
+                      (selectedProject.riskScore || 0) >= 75
                         ? COLORS.criticalBg
-                        : selectedProject.riskScore >= 50
+                        : (selectedProject.riskScore || 0) >= 50
                         ? COLORS.warningBg
                         : COLORS.successBg,
                   },
@@ -5187,22 +5756,24 @@ export default function LiveMonitoringScreen({ navigation }) {
                     styles.selectedRiskText,
                     {
                       color:
-                        selectedProject.riskScore >= 75
+                        (selectedProject.riskScore || 0) >= 75
                           ? COLORS.criticalText
-                          : selectedProject.riskScore >= 50
+                          : (selectedProject.riskScore || 0) >= 50
                           ? COLORS.warningText
                           : COLORS.successText,
                     },
                   ]}
                 >
-                  Risk: {selectedProject.riskScore}/100
+                  Risk: {selectedProject.riskScore || 0}/100
                 </Text>
               </View>
             </View>
 
-            <Text style={styles.selectedTitle}>{selectedProject.name}</Text>
-            <Text style={styles.selectedSub}>
-              {selectedProject.location} • Attendance: {selectedProject.attendanceRate}%
+            <Text style={styles.selectedTitle} numberOfLines={1}>
+              {selectedProject.name}
+            </Text>
+            <Text style={styles.selectedSub} numberOfLines={1}>
+              {selectedProject.location || selectedProject.district || 'Maharashtra'} • GPS: {selectedProject.latitude != null ? `${selectedProject.latitude}° N, ${selectedProject.longitude}° E` : 'Location verified'}
             </Text>
 
             <View style={styles.selectedActions}>
@@ -5262,33 +5833,47 @@ const styles = StyleSheet.create({
     height: 24,
     backgroundColor: COLORS.border,
   },
-  mapCanvas: {
+  mapContainer: {
     flex: 1,
-    backgroundColor: '#e2ece9',
     position: 'relative',
-    overflow: 'hidden',
   },
-  mapGridPattern: {
+  webView: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+  },
+  loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#d8e5e1',
-    opacity: 0.5,
+    backgroundColor: '#ffffff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
-  mapControls: {
+  loadingText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  mapControlsHeader: {
+    position: 'absolute',
+    top: SPACING.md,
+    left: SPACING.md,
+    right: SPACING.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: SPACING.md,
-    zIndex: 10,
+    zIndex: 20,
   },
   gpsLockTag: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: RADIUS.full,
-    ...SHADOWS.subtle,
+    ...SHADOWS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
   pulseDot: {
     width: 8,
@@ -5301,45 +5886,49 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.primary,
   },
-  refreshMapBtn: {
-    width: 36,
-    height: 36,
+  recenterBtn: {
+    width: 40,
+    height: 40,
     borderRadius: RADIUS.full,
     backgroundColor: '#ffffff',
     alignItems: 'center',
     justifyContent: 'center',
-    ...SHADOWS.subtle,
+    ...SHADOWS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
   },
-  markersContainer: {
-    flex: 1,
-    position: 'relative',
-  },
-  markerWrap: {
+  layerSelector: {
     position: 'absolute',
+    top: 65,
+    left: SPACING.md,
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    padding: 4,
+    borderRadius: RADIUS.md,
+    gap: 4,
+    ...SHADOWS.card,
+    borderWidth: 1,
+    borderColor: COLORS.borderLight,
+    zIndex: 20,
+  },
+  layerBtn: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: RADIUS.sm,
   },
-  markerBubble: {
-    width: 34,
-    height: 34,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#ffffff',
-    ...SHADOWS.floating,
+  layerBtnActive: {
+    backgroundColor: COLORS.primary,
   },
-  markerBubbleSelected: {
-    borderColor: '#000000',
-    transform: [{ scale: 1.2 }],
+  layerBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
   },
-  markerLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: COLORS.textPrimary,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 4,
-    borderRadius: 3,
-    marginTop: 2,
+  layerBtnTextActive: {
+    color: '#ffffff',
   },
   selectedProjectCard: {
     position: 'absolute',
@@ -5352,6 +5941,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderLight,
     ...SHADOWS.floating,
+    zIndex: 30,
   },
   selectedTopRow: {
     flexDirection: 'row',
@@ -5975,7 +6565,7 @@ export default function ProfileScreen({ navigation, route }) {
         <View style={styles.menuCard}>
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => navigation.navigate('InspectionsTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
           >
             <View style={[styles.menuIconWrap, { backgroundColor: COLORS.primaryLight }]}>
               <Ionicons name="clipboard" size={18} color={COLORS.primary} />
@@ -6422,11 +7012,23 @@ export default function ProjectDetailsScreen({ navigation, route }) {
           <View style={styles.geoRow}>
             <View style={styles.geoItem}>
               <Text style={styles.geoLabel}>Latitude</Text>
-              <Text style={styles.geoValue}>{project.coordinates.latitude}° N</Text>
+              <Text style={styles.geoValue}>
+                {project.latitude != null
+                  ? `${project.latitude}° N`
+                  : project.coordinates?.latitude != null
+                  ? `${project.coordinates.latitude}° N`
+                  : 'N/A'}
+              </Text>
             </View>
             <View style={styles.geoItem}>
               <Text style={styles.geoLabel}>Longitude</Text>
-              <Text style={styles.geoValue}>{project.coordinates.longitude}° E</Text>
+              <Text style={styles.geoValue}>
+                {project.longitude != null
+                  ? `${project.longitude}° E`
+                  : project.coordinates?.longitude != null
+                  ? `${project.coordinates.longitude}° E`
+                  : 'N/A'}
+              </Text>
             </View>
             <View style={styles.geoItem}>
               <Text style={styles.geoLabel}>Geofence</Text>
@@ -6459,7 +7061,7 @@ export default function ProjectDetailsScreen({ navigation, route }) {
 
           <TouchableOpacity
             style={styles.outlineActionBtn}
-            onPress={() => navigation.navigate('InspectionsTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
             activeOpacity={0.85}
           >
             <Ionicons name="document-text-outline" size={18} color={COLORS.textSecondary} />
@@ -7656,7 +8258,7 @@ export default function RandomAssignmentScreen({ navigation, route }) {
               style={styles.successDoneBtn}
               onPress={() => {
                 setSuccessModalVisible(false);
-                navigation.navigate('InspectionsTab');
+                navigation.navigate('MainTabs', { screen: 'InspectionsTab' });
               }}
             >
               <Text style={styles.successDoneText}>View Inspections List</Text>
@@ -8830,16 +9432,25 @@ import * as SecureStore from 'expo-secure-store';
 // Configure Backend API Base URL
 // Configurable via EXPO_PUBLIC_API_URL environment variable, with fallback for local dev
 export const getApiBaseUrl = () => {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+  let url = process.env.EXPO_PUBLIC_API_URL ? process.env.EXPO_PUBLIC_API_URL.trim() : '';
+  if (url) {
+    url = url.replace(/\/+$/, '');
+    if (!url.endsWith('/api')) {
+      url += '/api';
+    }
+    return url;
   }
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8080/api';
   }
   return 'http://localhost:8080/api';
 };
+//temporary 
+
 
 const API_BASE_URL = getApiBaseUrl();
+
+console.log('API BASE URL:', API_BASE_URL);
 const TOKEN_KEY = 'DOSJE_AUTH_JWT_TOKEN';
 const USER_KEY = 'DOSJE_AUTH_USER_DATA';
 

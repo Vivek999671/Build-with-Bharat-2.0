@@ -5,8 +5,13 @@ import * as SecureStore from 'expo-secure-store';
 // Configure Backend API Base URL
 // Configurable via EXPO_PUBLIC_API_URL environment variable, with fallback for local dev
 export const getApiBaseUrl = () => {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
+  let url = process.env.EXPO_PUBLIC_API_URL ? process.env.EXPO_PUBLIC_API_URL.trim() : '';
+  if (url) {
+    url = url.replace(/\/+$/, '');
+    if (!url.endsWith('/api')) {
+      url += '/api';
+    }
+    return url;
   }
   if (Platform.OS === 'android') {
     return 'http://10.0.2.2:8080/api';

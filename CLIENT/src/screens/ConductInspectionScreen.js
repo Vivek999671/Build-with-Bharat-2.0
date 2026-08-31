@@ -21,6 +21,20 @@ import { sendLocalNotification } from '../services/notificationService';
 import { saveInspectionLocally } from '../storage/offlineStorage';
 import { ApiService } from '../services/apiService';
 
+function calculateHaversineDistanceMeters(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in meters
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 export default function ConductInspectionScreen({ navigation, route }) {
   const inspection = route.params?.inspection || MOCK_INSPECTIONS[0];
   const project = route.params?.project || MOCK_PROJECTS.find(p => p.id === inspection.projectId) || MOCK_PROJECTS[0];
@@ -65,7 +79,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
       uri: 'https://images.unsplash.com/photo-1577495508048-b635879837f1?w=400',
       name: 'Building_Entrance_GeoTag.jpg',
       timestamp: '11:35 AM',
-      coordinates: '18.5204° N, 73.8567° E',
+      coordinates: 'Geo-tagged on capture',
       type: 'photo',
     },
     {
@@ -73,7 +87,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
       uri: 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=400',
       name: 'Classroom_Attendance_Biometric.jpg',
       timestamp: '11:42 AM',
-      coordinates: '18.5205° N, 73.8568° E',
+      coordinates: 'Geo-tagged on capture',
       type: 'photo',
     },
   ]);
@@ -101,39 +115,123 @@ export default function ConductInspectionScreen({ navigation, route }) {
   const attendanceRate = total > 0 ? Math.round((present / total) * 100) : 0;
   const isAnomaly = attendanceRate < 80;
 
-  // GPS Capture Handler
+  // GPS Capture Handler with Authoritative Backend Haversine Distance
   const handleCaptureGPS = async () => {
     setGpsLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
-        // Fallback realistic coordinates for demo
-        setGpsData({
-          latitude: 18.5204,
-          longitude: 73.8567,
-          accuracy: 6.4,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          verified: true,
-        });
-        Alert.alert('Location Captured', 'Coordinates verified via e-NirikShan Geo-Lock.');
+        Alert.alert(
+          'Location Permission Denied',
+          'GPS location access is strictly required to verify physical presence at the project geofence.'
+        );
+        setGpsLoading(false);
+        return;
+      }
+
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const deviceLat = Number(loc.coords.latitude);
+      const deviceLng = Number(loc.coords.longitude);
+      const sensorAccuracy = Number(loc.coords.accuracy?.toFixed(1) || 8.0);
+      const timestampStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+      // Target project coordinates from inspection or project
+      const targetLat = inspection.latitude != null
+        ? Number(inspection.latitude)
+        : project.latitude != null
+        ? Number(project.latitude)
+        : project.coordinates?.latitude != null
+        ? Number(project.coordinates.latitude)
+        : null;
+
+      const targetLng = inspection.longitude != null
+        ? Number(inspection.longitude)
+        : project.longitude != null
+        ? Number(project.longitude)
+        : project.coordinates?.longitude != null
+        ? Number(project.coordinates.longitude)
+        : null;
+
+      // Required Debugging Logs
+      console.log('=== DEVICE GPS ===');
+      console.log('latitude =', deviceLat);
+      console.log('longitude =', deviceLng);
+      console.log('accuracy =', sensorAccuracy, 'meters');
+      console.log('=== INSPECTION ===');
+      console.log('id =', inspection.id);
+      console.log('targetLatitude =', targetLat);
+      console.log('targetLongitude =', targetLng);
+
+      if (targetLat == null || targetLng == null) {
+        Alert.alert(
+          'Target Coordinates Missing',
+          'This project does not have target GPS coordinates configured in the registry. Geofence verification cannot proceed.'
+        );
+        setGpsLoading(false);
+        return;
+      }
+
+      // Compute client-side Haversine distance
+      const localDistanceMeters = calculateHaversineDistanceMeters(deviceLat, deviceLng, targetLat, targetLng);
+      let isVerified = localDistanceMeters <= 150.0;
+      let finalDistance = localDistanceMeters;
+      let threshold = 150.0;
+
+      // Call Backend REST API for authoritative server-side verification and audit trail
+      try {
+        const apiRes = await ApiService.verifyGPS(
+          inspection.id,
+          deviceLat,
+          deviceLng,
+          sensorAccuracy,
+          new Date().toISOString()
+        );
+
+        if (apiRes && apiRes.data) {
+          isVerified = apiRes.data.gpsVerified === true;
+          if (apiRes.data.distanceMeters != null) {
+            finalDistance = apiRes.data.distanceMeters;
+          }
+          if (apiRes.data.thresholdMeters != null) {
+            threshold = apiRes.data.thresholdMeters;
+          }
+        }
+      } catch (apiErr) {
+        console.warn('Backend GPS API verification failed or offline:', apiErr.message);
+      }
+
+      const formattedDistance = finalDistance >= 1000
+        ? `${(finalDistance / 1000).toFixed(2)} km`
+        : `${Math.round(finalDistance)} meters`;
+
+      setGpsData({
+        latitude: Number(deviceLat.toFixed(4)),
+        longitude: Number(deviceLng.toFixed(4)),
+        rawLatitude: deviceLat,
+        rawLongitude: deviceLng,
+        accuracy: sensorAccuracy,
+        timestamp: timestampStr,
+        distanceMeters: Math.round(finalDistance * 10) / 10,
+        formattedDistance,
+        targetLatitude: targetLat,
+        targetLongitude: targetLng,
+        thresholdMeters: threshold,
+        verified: isVerified,
+      });
+
+      if (isVerified) {
+        Alert.alert(
+          'GPS Verification Successful',
+          `Verified within authorized geofence for ${project.name || 'project'}.\n\nDistance: ${formattedDistance} (Threshold: ${threshold}m)`
+        );
       } else {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-        setGpsData({
-          latitude: Number(loc.coords.latitude.toFixed(4)),
-          longitude: Number(loc.coords.longitude.toFixed(4)),
-          accuracy: Number(loc.coords.accuracy?.toFixed(1) || 8.0),
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-          verified: true,
-        });
+        Alert.alert(
+          'GPS Verification Failed',
+          `You are ${formattedDistance} away from ${project.name || 'the project site'}.\n\nPhysical presence within ${threshold}m is required to verify the geofence.`
+        );
       }
     } catch (e) {
-      setGpsData({
-        latitude: 18.5204,
-        longitude: 73.8567,
-        accuracy: 7.2,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
-        verified: true,
-      });
+      Alert.alert('GPS Capture Error', 'Could not obtain location from device: ' + e.message);
     } finally {
       setGpsLoading(false);
     }
@@ -168,7 +266,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
           uri: asset.uri,
           name: fileName,
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          coordinates: gpsData ? `${gpsData.latitude}° N, ${gpsData.longitude}° E` : '18.5204° N, 73.8567° E',
+          coordinates: gpsData ? `${gpsData.latitude}° N, ${gpsData.longitude}° E` : 'Coordinates pending',
           type: 'photo',
         };
         setEvidenceList((prev) => [...prev, newEvidence]);
@@ -178,9 +276,9 @@ export default function ConductInspectionScreen({ navigation, route }) {
           const uploadRes = await ApiService.uploadEvidenceFile(inspection.id, asset.uri, {
             fileName,
             mediaType: 'IMAGE',
-            latitude: gpsData?.latitude || 18.5204,
-            longitude: gpsData?.longitude || 73.8567,
-            accuracyMeters: gpsData?.accuracy || 6.4,
+            latitude: gpsData?.rawLatitude || gpsData?.latitude || null,
+            longitude: gpsData?.rawLongitude || gpsData?.longitude || null,
+            accuracyMeters: gpsData?.accuracy || null,
             capturedTimestamp: new Date().toISOString(),
             caption: `Geo-Tagged Field Photo for ${project.name}`,
           });
@@ -207,7 +305,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
       id: inspection.id,
       projectId: project.id,
       projectName: project.name,
-      gps: gpsData || { latitude: 18.5204, longitude: 73.8567, accuracy: 6.4 },
+      gps: gpsData || null,
       attendanceRate,
       presentStaff: parseInt(presentStaff, 10) || 0,
       totalStaff: parseInt(totalStaff, 10) || 0,
@@ -306,34 +404,75 @@ export default function ConductInspectionScreen({ navigation, route }) {
             </Text>
 
             {gpsData ? (
-              <View style={styles.gpsVerifiedCard}>
+              <View style={[styles.gpsVerifiedCard, !gpsData.verified && styles.gpsUnverifiedCard]}>
                 <View style={styles.gpsVerifiedHeader}>
-                  <Ionicons name="checkmark-circle" size={24} color={COLORS.success} />
-                  <Text style={styles.gpsVerifiedTitle}>GPS Coordinates Verified</Text>
+                  <Ionicons
+                    name={gpsData.verified ? 'checkmark-circle' : 'alert-circle'}
+                    size={24}
+                    color={gpsData.verified ? COLORS.success : COLORS.critical}
+                  />
+                  <Text
+                    style={[
+                      styles.gpsVerifiedTitle,
+                      !gpsData.verified && { color: COLORS.criticalText },
+                    ]}
+                  >
+                    {gpsData.verified ? 'GPS Coordinates Verified' : 'Geofence Verification Failed'}
+                  </Text>
                 </View>
 
                 <View style={styles.coordsGrid}>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>LATITUDE</Text>
+                    <Text style={styles.coordsLabel}>DEVICE LATITUDE</Text>
                     <Text style={styles.coordsVal}>{gpsData.latitude}° N</Text>
                   </View>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>LONGITUDE</Text>
+                    <Text style={styles.coordsLabel}>DEVICE LONGITUDE</Text>
                     <Text style={styles.coordsVal}>{gpsData.longitude}° E</Text>
                   </View>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>ACCURACY</Text>
-                    <Text style={styles.coordsVal}>{gpsData.accuracy} meters</Text>
+                    <Text style={styles.coordsLabel}>GPS ACCURACY</Text>
+                    <Text style={styles.coordsVal}>{gpsData.accuracy} m (Sensor)</Text>
                   </View>
                   <View style={styles.coordsCol}>
-                    <Text style={styles.coordsLabel}>TIMESTAMP</Text>
-                    <Text style={styles.coordsVal}>{gpsData.timestamp}</Text>
+                    <Text style={styles.coordsLabel}>DISTANCE TO SITE</Text>
+                    <Text
+                      style={[
+                        styles.coordsVal,
+                        !gpsData.verified && { color: COLORS.criticalText, fontWeight: '800' },
+                      ]}
+                    >
+                      {gpsData.formattedDistance}
+                    </Text>
                   </View>
                 </View>
 
-                <View style={styles.geofenceMatch}>
-                  <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
-                  <Text style={styles.geofenceMatchText}>Within Authorized Geofence (Distance: 12m)</Text>
+                <View
+                  style={[
+                    styles.geofenceMatch,
+                    !gpsData.verified && styles.geofenceMismatch,
+                  ]}
+                >
+                  <Ionicons
+                    name={gpsData.verified ? 'shield-checkmark' : 'shield-outline'}
+                    size={16}
+                    color={gpsData.verified ? COLORS.success : COLORS.critical}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={[
+                        styles.geofenceMatchText,
+                        !gpsData.verified && { color: COLORS.criticalText, fontWeight: '800' },
+                      ]}
+                    >
+                      {gpsData.verified
+                        ? `Within Authorized Geofence (Distance: ${gpsData.formattedDistance})`
+                        : `Outside Authorized Geofence (Distance: ${gpsData.formattedDistance})`}
+                    </Text>
+                    <Text style={styles.geofenceSubText}>
+                      Target Site: {gpsData.targetLatitude}° N, {gpsData.targetLongitude}° E • Threshold: {gpsData.thresholdMeters}m
+                    </Text>
+                  </View>
                 </View>
               </View>
             ) : (
@@ -366,7 +505,24 @@ export default function ConductInspectionScreen({ navigation, route }) {
 
             <TouchableOpacity
               style={styles.nextStepBtn}
-              onPress={() => setActiveStep(2)}
+              onPress={() => {
+                if (!gpsData) {
+                  Alert.alert('GPS Required', 'Please capture your real-time GPS location before proceeding.');
+                  return;
+                }
+                if (!gpsData.verified) {
+                  Alert.alert(
+                    'Geofence Warning',
+                    `You are ${gpsData.formattedDistance} away from the project site (Threshold: ${gpsData.thresholdMeters}m).\n\nProceeding without physical on-site presence will flag this audit dossier with a Location Anomaly tag.`,
+                    [
+                      { text: 'Recapture GPS', style: 'cancel' },
+                      { text: 'Proceed as Flagged', style: 'destructive', onPress: () => setActiveStep(2) },
+                    ]
+                  );
+                  return;
+                }
+                setActiveStep(2);
+              }}
             >
               <Text style={styles.nextStepBtnText}>Continue to Attendance Verification</Text>
               <Ionicons name="arrow-forward" size={16} color="#ffffff" />
@@ -771,10 +927,20 @@ export default function ConductInspectionScreen({ navigation, route }) {
             {/* Checklist items verification */}
             <View style={styles.summaryList}>
               <View style={styles.summaryItem}>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.success} />
+                <Ionicons
+                  name={gpsData?.verified ? 'checkmark-circle' : 'alert-circle'}
+                  size={20}
+                  color={gpsData?.verified ? COLORS.success : COLORS.critical}
+                />
                 <View style={styles.summaryItemTextWrap}>
-                  <Text style={styles.summaryItemTitle}>GPS Geo-Lock Verified</Text>
-                  <Text style={styles.summaryItemSub}>18.5204° N, 73.8567° E (Within geofence)</Text>
+                  <Text style={styles.summaryItemTitle}>
+                    {gpsData?.verified ? 'GPS Geo-Lock Verified' : 'GPS Geo-Lock Flagged Out-of-Bounds'}
+                  </Text>
+                  <Text style={styles.summaryItemSub}>
+                    {gpsData
+                      ? `${gpsData.latitude}° N, ${gpsData.longitude}° E • Distance: ${gpsData.formattedDistance} (${gpsData.verified ? 'Verified' : 'Flagged'})`
+                      : 'GPS lock not captured'}
+                  </Text>
                 </View>
               </View>
 
@@ -872,7 +1038,7 @@ export default function ConductInspectionScreen({ navigation, route }) {
               style={styles.successDoneBtn}
               onPress={() => {
                 setSuccessModalVisible(false);
-                navigation.navigate('InspectionsTab');
+                navigation.navigate('MainTabs', { screen: 'InspectionsTab' });
               }}
             >
               <Text style={styles.successDoneText}>Return to Inspections Hub</Text>
@@ -1048,6 +1214,10 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 14,
   },
+  gpsUnverifiedCard: {
+    backgroundColor: COLORS.criticalBg,
+    borderColor: '#fca5a5',
+  },
   gpsVerifiedHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1087,10 +1257,18 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#bbf7d0',
   },
+  geofenceMismatch: {
+    borderTopColor: '#fecaca',
+  },
   geofenceMatchText: {
     fontSize: 11,
     color: COLORS.successText,
     fontWeight: '600',
+  },
+  geofenceSubText: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 2,
   },
   gpsButton: {
     backgroundColor: COLORS.primary,

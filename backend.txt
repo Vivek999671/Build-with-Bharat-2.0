@@ -1,8 +1,34 @@
 ================================================================================
-DoSJE Real-Time Monitoring & Digital Inspection Management System - BACKEND
+DoSJE Real-Time Monitoring & Digital Inspection - BACKEND (Spring Boot 3.2.5)
 ================================================================================
 
-Total Files: 58
+Total Files: 61
+
+================================================================================
+FILE: Backend/.env
+================================================================================
+
+SUPABASE_DB_URL=jdbc:postgresql://db.wpqgmtwdrsbtkzdjycpl.supabase.co:5432/postgres?user=postgres&password=M2DhphAS78TfFahO
+SUPABASE_DB_USERNAME=postgres
+SUPABASE_DB_PASSWORD=M2DhphAS78TfFahO
+SUPABASE_URL="https://wpqgmtwdrsbtkzdjycpl.supabase.co"
+
+
+--------------------------------------------------------------------------------
+
+================================================================================
+FILE: Backend/.gitignore
+================================================================================
+
+.env
+.env*.local
+target/
+*.jar
+*.class
+.DS_Store
+
+
+--------------------------------------------------------------------------------
 
 ================================================================================
 FILE: Backend/pom.xml
@@ -84,6 +110,13 @@ FILE: Backend/pom.xml
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Dotenv for loading environment variables from .env -->
+        <dependency>
+            <groupId>io.github.cdimascio</groupId>
+            <artifactId>dotenv-java</artifactId>
+            <version>3.1.0</version>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -116,16 +149,59 @@ FILE: Backend/src/main/java/com/dosje/monitoring/MonitoringApplication.java
 
 package com.dosje.monitoring;
 
+import io.github.cdimascio.dotenv.Dotenv;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+import java.io.File;
 
 @SpringBootApplication
 public class MonitoringApplication {
 
     public static void main(String[] args) {
+        loadDotenv();
         SpringApplication.run(MonitoringApplication.class, args);
     }
+
+    private static void loadDotenv() {
+        // 1. Try loading .env from the current working directory
+        try {
+            Dotenv dotenv = Dotenv.configure()
+                    .ignoreIfMissing()
+                    .ignoreIfMalformed()
+                    .load();
+
+            dotenv.entries().forEach(entry -> {
+                if (System.getProperty(entry.getKey()) == null && System.getenv(entry.getKey()) == null) {
+                    System.setProperty(entry.getKey(), entry.getValue());
+                }
+            });
+        } catch (Exception ignored) {
+        }
+
+        // 2. If running from parent directory (e.g. workspace root), check Backend/.env
+        if (System.getProperty("SUPABASE_DB_URL") == null && System.getenv("SUPABASE_DB_URL") == null) {
+            try {
+                File backendDir = new File("Backend");
+                if (backendDir.exists() && backendDir.isDirectory()) {
+                    Dotenv dotenv = Dotenv.configure()
+                            .directory("Backend")
+                            .ignoreIfMissing()
+                            .ignoreIfMalformed()
+                            .load();
+
+                    dotenv.entries().forEach(entry -> {
+                        if (System.getProperty(entry.getKey()) == null && System.getenv(entry.getKey()) == null) {
+                            System.setProperty(entry.getKey(), entry.getValue());
+                        }
+                    });
+                }
+            } catch (Exception ignored) {
+            }
+        }
+    }
 }
+
 
 
 --------------------------------------------------------------------------------
@@ -1166,12 +1242,12 @@ public class InspectionController {
     }
 
     @PostMapping("/{id}/gps")
-    public ResponseEntity<ApiResponse<Inspection>> verifyGPS(
+    public ResponseEntity<ApiResponse<GPSVerificationResponse>> verifyGPS(
             @PathVariable String id,
             @Valid @RequestBody GPSVerificationRequest request) {
         try {
-            Inspection updated = inspectionService.verifyGPS(id, request);
-            return ResponseEntity.ok(ApiResponse.ok("GPS location verified and geo-tagged successfully", updated));
+            GPSVerificationResponse response = inspectionService.verifyGPS(id, request);
+            return ResponseEntity.ok(ApiResponse.ok(response.getMessage(), response));
         } catch (Exception ex) {
             return ResponseEntity.badRequest().body(ApiResponse.error(ex.getMessage()));
         }
@@ -1865,6 +1941,130 @@ public class GPSVerificationRequest {
 
     public void setTimestamp(String timestamp) {
         this.timestamp = timestamp;
+    }
+}
+
+
+--------------------------------------------------------------------------------
+
+================================================================================
+FILE: Backend/src/main/java/com/dosje/monitoring/dto/GPSVerificationResponse.java
+================================================================================
+
+package com.dosje.monitoring.dto;
+
+import com.dosje.monitoring.entity.Inspection;
+
+public class GPSVerificationResponse {
+
+    private Boolean gpsVerified;
+    private Double distanceMeters;
+    private Double deviceLatitude;
+    private Double deviceLongitude;
+    private Double targetLatitude;
+    private Double targetLongitude;
+    private Double thresholdMeters;
+    private Double accuracyMeters;
+    private String message;
+    private Inspection inspection;
+
+    public GPSVerificationResponse() {
+    }
+
+    public GPSVerificationResponse(Boolean gpsVerified, Double distanceMeters, Double deviceLatitude,
+                                   Double deviceLongitude, Double targetLatitude, Double targetLongitude,
+                                   Double thresholdMeters, Double accuracyMeters, String message,
+                                   Inspection inspection) {
+        this.gpsVerified = gpsVerified;
+        this.distanceMeters = distanceMeters;
+        this.deviceLatitude = deviceLatitude;
+        this.deviceLongitude = deviceLongitude;
+        this.targetLatitude = targetLatitude;
+        this.targetLongitude = targetLongitude;
+        this.thresholdMeters = thresholdMeters;
+        this.accuracyMeters = accuracyMeters;
+        this.message = message;
+        this.inspection = inspection;
+    }
+
+    public Boolean getGpsVerified() {
+        return gpsVerified;
+    }
+
+    public void setGpsVerified(Boolean gpsVerified) {
+        this.gpsVerified = gpsVerified;
+    }
+
+    public Double getDistanceMeters() {
+        return distanceMeters;
+    }
+
+    public void setDistanceMeters(Double distanceMeters) {
+        this.distanceMeters = distanceMeters;
+    }
+
+    public Double getDeviceLatitude() {
+        return deviceLatitude;
+    }
+
+    public void setDeviceLatitude(Double deviceLatitude) {
+        this.deviceLatitude = deviceLatitude;
+    }
+
+    public Double getDeviceLongitude() {
+        return deviceLongitude;
+    }
+
+    public void setDeviceLongitude(Double deviceLongitude) {
+        this.deviceLongitude = deviceLongitude;
+    }
+
+    public Double getTargetLatitude() {
+        return targetLatitude;
+    }
+
+    public void setTargetLatitude(Double targetLatitude) {
+        this.targetLatitude = targetLatitude;
+    }
+
+    public Double getTargetLongitude() {
+        return targetLongitude;
+    }
+
+    public void setTargetLongitude(Double targetLongitude) {
+        this.targetLongitude = targetLongitude;
+    }
+
+    public Double getThresholdMeters() {
+        return thresholdMeters;
+    }
+
+    public void setThresholdMeters(Double thresholdMeters) {
+        this.thresholdMeters = thresholdMeters;
+    }
+
+    public Double getAccuracyMeters() {
+        return accuracyMeters;
+    }
+
+    public void setAccuracyMeters(Double accuracyMeters) {
+        this.accuracyMeters = accuracyMeters;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public Inspection getInspection() {
+        return inspection;
+    }
+
+    public void setInspection(Inspection inspection) {
+        this.inspection = inspection;
     }
 }
 
@@ -4633,19 +4833,104 @@ public class InspectionService {
         return inspectionRepository.save(inspection);
     }
 
-    public Inspection verifyGPS(String inspectionId, GPSVerificationRequest request) {
+    public GPSVerificationResponse verifyGPS(String inspectionId, GPSVerificationRequest request) {
         Inspection inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new RuntimeException("Inspection not found: " + inspectionId));
 
-        inspection.setGpsVerified(true);
+        Double targetLat = inspection.getLatitude();
+        Double targetLng = inspection.getLongitude();
+
+        // If target coordinates are not directly set on inspection, load from associated Project
+        if (targetLat == null || targetLng == null) {
+            Project project = projectRepository.findById(inspection.getProjectId()).orElse(null);
+            if (project != null) {
+                targetLat = project.getLatitude();
+                targetLng = project.getLongitude();
+                inspection.setLatitude(targetLat);
+                inspection.setLongitude(targetLng);
+            }
+        }
+
+        if (targetLat == null || targetLng == null) {
+            throw new RuntimeException("Target project has no GPS coordinates configured for geofence verification.");
+        }
+
+        if (request.getLatitude() == null || request.getLongitude() == null) {
+            throw new RuntimeException("Device GPS coordinates (latitude and longitude) are required.");
+        }
+
+        // Coordinate range validation
+        if (request.getLatitude() < -90.0 || request.getLatitude() > 90.0 ||
+            request.getLongitude() < -180.0 || request.getLongitude() > 180.0) {
+            throw new RuntimeException("Device coordinates are out of valid geographic range.");
+        }
+
+        // Authoritative Server-Side Haversine Calculation
+        double distanceMeters = calculateHaversineDistanceMeters(
+                request.getLatitude(), request.getLongitude(),
+                targetLat, targetLng
+        );
+
+        double thresholdMeters = 150.0;
+        boolean withinGeofence = distanceMeters <= thresholdMeters;
+
+        // Persist authoritative verification result in PostgreSQL database
+        inspection.setGpsVerified(withinGeofence);
         inspection.setCapturedLatitude(request.getLatitude());
         inspection.setCapturedLongitude(request.getLongitude());
         inspection.setGpsAccuracyMeters(request.getAccuracyMeters() != null ? request.getAccuracyMeters() : 8.0);
         inspection.setGpsTimestamp(request.getTimestamp() != null ? request.getTimestamp() : LocalDateTime.now().toString());
-        inspection.setStatus("In Progress");
+
+        if (distanceMeters >= 1000.0) {
+            inspection.setDistance(String.format("%.1f km", distanceMeters / 1000.0));
+        } else {
+            inspection.setDistance(String.format("%.0f m", distanceMeters));
+        }
+
+        if (withinGeofence) {
+            inspection.setStatus("In Progress");
+        }
         inspection.setUpdatedAt(LocalDateTime.now());
 
-        return inspectionRepository.save(inspection);
+        Inspection savedInspection = inspectionRepository.save(inspection);
+
+        // Required Debug Logging
+        System.out.println("=== GPS VERIFICATION ===");
+        System.out.println("Inspection ID: " + inspectionId);
+        System.out.println("Device: lat=" + request.getLatitude() + ", lng=" + request.getLongitude() + " (accuracy=" + request.getAccuracyMeters() + "m)");
+        System.out.println("Target: lat=" + targetLat + ", lng=" + targetLng);
+        System.out.printf("Distance: %.2f meters%n", distanceMeters);
+        System.out.println("Threshold: " + thresholdMeters + " meters");
+        System.out.println("Verified: " + withinGeofence);
+        System.out.println("========================");
+
+        String statusMsg = withinGeofence
+                ? String.format("GPS verified: Within geofence (%.1fm <= %.0fm)", distanceMeters, thresholdMeters)
+                : String.format("GPS verification failed: Outside geofence (%.1fm > %.0fm)", distanceMeters, thresholdMeters);
+
+        return new GPSVerificationResponse(
+                withinGeofence,
+                Math.round(distanceMeters * 10.0) / 10.0,
+                request.getLatitude(),
+                request.getLongitude(),
+                targetLat,
+                targetLng,
+                thresholdMeters,
+                request.getAccuracyMeters(),
+                statusMsg,
+                savedInspection
+        );
+    }
+
+    public double calculateHaversineDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
+        final double R = 6371000.0; // Earth radius in meters
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0);
+        double c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a));
+        return R * c;
     }
 
     public Attendance recordAttendance(String inspectionId, AttendanceVerificationRequest request) {

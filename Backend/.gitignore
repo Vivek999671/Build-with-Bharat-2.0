@@ -1,0 +1,6 @@
+.env
+.env*.local
+target/
+*.jar
+*.class
+.DS_Store

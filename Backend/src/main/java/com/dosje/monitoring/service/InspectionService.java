@@ -84,19 +84,104 @@ public class InspectionService {
         return inspectionRepository.save(inspection);
     }
 
-    public Inspection verifyGPS(String inspectionId, GPSVerificationRequest request) {
+    public GPSVerificationResponse verifyGPS(String inspectionId, GPSVerificationRequest request) {
         Inspection inspection = inspectionRepository.findById(inspectionId)
                 .orElseThrow(() -> new RuntimeException("Inspection not found: " + inspectionId));
 
-        inspection.setGpsVerified(true);
+        Double targetLat = inspection.getLatitude();
+        Double targetLng = inspection.getLongitude();
+
+        // If target coordinates are not directly set on inspection, load from associated Project
+        if (targetLat == null || targetLng == null) {
+            Project project = projectRepository.findById(inspection.getProjectId()).orElse(null);
+            if (project != null) {
+                targetLat = project.getLatitude();
+                targetLng = project.getLongitude();
+                inspection.setLatitude(targetLat);
+                inspection.setLongitude(targetLng);
+            }
+        }
+
+        if (targetLat == null || targetLng == null) {
+            throw new RuntimeException("Target project has no GPS coordinates configured for geofence verification.");
+        }
+
+        if (request.getLatitude() == null || request.getLongitude() == null) {
+            throw new RuntimeException("Device GPS coordinates (latitude and longitude) are required.");
+        }
+
+        // Coordinate range validation
+        if (request.getLatitude() < -90.0 || request.getLatitude() > 90.0 ||
+            request.getLongitude() < -180.0 || request.getLongitude() > 180.0) {
+            throw new RuntimeException("Device coordinates are out of valid geographic range.");
+        }
+
+        // Authoritative Server-Side Haversine Calculation
+        double distanceMeters = calculateHaversineDistanceMeters(
+                request.getLatitude(), request.getLongitude(),
+                targetLat, targetLng
+        );
+
+        double thresholdMeters = 150.0;
+        boolean withinGeofence = distanceMeters <= thresholdMeters;
+
+        // Persist authoritative verification result in PostgreSQL database
+        inspection.setGpsVerified(withinGeofence);
         inspection.setCapturedLatitude(request.getLatitude());
         inspection.setCapturedLongitude(request.getLongitude());
         inspection.setGpsAccuracyMeters(request.getAccuracyMeters() != null ? request.getAccuracyMeters() : 8.0);
         inspection.setGpsTimestamp(request.getTimestamp() != null ? request.getTimestamp() : LocalDateTime.now().toString());
-        inspection.setStatus("In Progress");
+
+        if (distanceMeters >= 1000.0) {
+            inspection.setDistance(String.format("%.1f km", distanceMeters / 1000.0));
+        } else {
+            inspection.setDistance(String.format("%.0f m", distanceMeters));
+        }
+
+        if (withinGeofence) {
+            inspection.setStatus("In Progress");
+        }
         inspection.setUpdatedAt(LocalDateTime.now());
 
-        return inspectionRepository.save(inspection);
+        Inspection savedInspection = inspectionRepository.save(inspection);
+
+        // Required Debug Logging
+        System.out.println("=== GPS VERIFICATION ===");
+        System.out.println("Inspection ID: " + inspectionId);
+        System.out.println("Device: lat=" + request.getLatitude() + ", lng=" + request.getLongitude() + " (accuracy=" + request.getAccuracyMeters() + "m)");
+        System.out.println("Target: lat=" + targetLat + ", lng=" + targetLng);
+        System.out.printf("Distance: %.2f meters%n", distanceMeters);
+        System.out.println("Threshold: " + thresholdMeters + " meters");
+        System.out.println("Verified: " + withinGeofence);
+        System.out.println("========================");
+
+        String statusMsg = withinGeofence
+                ? String.format("GPS verified: Within geofence (%.1fm <= %.0fm)", distanceMeters, thresholdMeters)
+                : String.format("GPS verification failed: Outside geofence (%.1fm > %.0fm)", distanceMeters, thresholdMeters);
+
+        return new GPSVerificationResponse(
+                withinGeofence,
+                Math.round(distanceMeters * 10.0) / 10.0,
+                request.getLatitude(),
+                request.getLongitude(),
+                targetLat,
+                targetLng,
+                thresholdMeters,
+                request.getAccuracyMeters(),
+                statusMsg,
+                savedInspection
+        );
+    }
+
+    public double calculateHaversineDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
+        final double R = 6371000.0; // Earth radius in meters
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2.0) * Math.sin(dLat / 2.0)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLon / 2.0) * Math.sin(dLon / 2.0);
+        double c = 2.0 * Math.atan2(Math.sqrt(a), Math.sqrt(1.0 - a));
+        return R * c;
     }
 
     public Attendance recordAttendance(String inspectionId, AttendanceVerificationRequest request) {

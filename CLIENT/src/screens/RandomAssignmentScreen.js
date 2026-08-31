@@ -360,7 +360,7 @@ export default function RandomAssignmentScreen({ navigation, route }) {
               style={styles.successDoneBtn}
               onPress={() => {
                 setSuccessModalVisible(false);
-                navigation.navigate('InspectionsTab');
+                navigation.navigate('MainTabs', { screen: 'InspectionsTab' });
               }}
             >
               <Text style={styles.successDoneText}>View Inspections List</Text>

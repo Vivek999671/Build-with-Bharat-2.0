@@ -184,7 +184,7 @@ export default function HomeScreen({ navigation, route }) {
                   onPress={() =>
                     Alert.alert(
                       'Turn-by-Turn Navigation',
-                      `Opening GPS Navigation to ${upcomingInspection.projectName} (${upcomingInspection.distance || '14.2 km'}). Coordinates: 18.5204, 73.8567`
+                      `Opening GPS Navigation to ${upcomingInspection.projectName} (${upcomingInspection.distance || 'Distance pending'}). Coordinates: ${upcomingInspection.latitude ?? 'N/A'}° N, ${upcomingInspection.longitude ?? 'N/A'}° E`
                     )
                   }
                 >
@@ -239,7 +239,7 @@ export default function HomeScreen({ navigation, route }) {
 
               <TouchableOpacity
                 style={[styles.statCard, { borderLeftColor: COLORS.success }]}
-                onPress={() => navigation.navigate('InspectionsTab')}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
                 activeOpacity={0.8}
               >
                 <View style={styles.statTopRow}>
@@ -256,7 +256,7 @@ export default function HomeScreen({ navigation, route }) {
 
               <TouchableOpacity
                 style={[styles.statCard, { borderLeftColor: COLORS.warning }]}
-                onPress={() => navigation.navigate('InspectionsTab')}
+                onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
                 activeOpacity={0.8}
               >
                 <View style={styles.statTopRow}>

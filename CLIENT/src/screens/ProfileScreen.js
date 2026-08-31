@@ -88,7 +88,7 @@ export default function ProfileScreen({ navigation, route }) {
         <View style={styles.menuCard}>
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => navigation.navigate('InspectionsTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
           >
             <View style={[styles.menuIconWrap, { backgroundColor: COLORS.primaryLight }]}>
               <Ionicons name="clipboard" size={18} color={COLORS.primary} />
