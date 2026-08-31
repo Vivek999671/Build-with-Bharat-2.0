@@ -13,12 +13,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
+import { ApiService, setSavedUser } from '../services/apiService';
 
 export default function LoginScreen({ navigation }) {
   const [selectedRole, setSelectedRole] = useState('DoSJE Official');
   const [officialId, setOfficialId] = useState('DOSJE-OFF-2026');
   const [password, setPassword] = useState('••••••••');
   const [secureText, setSecureText] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   const roles = [
     {
@@ -26,21 +28,21 @@ export default function LoginScreen({ navigation }) {
       title: 'DoSJE Official',
       subtitle: 'Central / State Monitoring',
       icon: 'shield-checkmark',
-      demoId: 'DOSJE-OFF-2026',
+      demoId: 'admin',
     },
     {
       id: 'PMU Inspector',
       title: 'PMU Inspector',
       subtitle: 'Field Inspection Team',
       icon: 'clipboard',
-      demoId: 'PMU-INS-8492',
+      demoId: 'rahul.inspector',
     },
     {
       id: 'Project Staff',
       title: 'Project Staff',
       subtitle: 'NGO / Institute Admin',
       icon: 'business',
-      demoId: 'NGO-STF-1044',
+      demoId: 'sahyadri.ngo',
     },
   ];
 
@@ -49,14 +51,34 @@ export default function LoginScreen({ navigation }) {
     setOfficialId(role.demoId);
   };
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!officialId.trim()) {
       Alert.alert('Validation Error', 'Please enter your Official ID or Email.');
       return;
     }
 
-    // Navigate to Main Tabs with selected role
-    navigation.replace('MainTabs', { userRole: selectedRole });
+    setLoading(true);
+    try {
+      const user = await ApiService.login(officialId, password === '••••••••' ? 'admin123' : password);
+      if (user) {
+        await setSavedUser(user);
+      }
+      navigation.replace('MainTabs', { userRole: selectedRole, user });
+    } catch (err) {
+      Alert.alert(
+        'Authentication Notice',
+        `Server notice: ${err.message || 'Unable to connect to Spring Boot / Supabase'}.\n\nWould you like to continue in offline inspection mode?`,
+        [
+          { text: 'Retry', style: 'cancel' },
+          {
+            text: 'Offline Mode',
+            onPress: () => navigation.replace('MainTabs', { userRole: selectedRole }),
+          },
+        ]
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

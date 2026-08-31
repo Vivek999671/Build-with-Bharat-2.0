@@ -159,11 +159,23 @@ export default function ProjectDetailsScreen({ navigation, route }) {
           <View style={styles.geoRow}>
             <View style={styles.geoItem}>
               <Text style={styles.geoLabel}>Latitude</Text>
-              <Text style={styles.geoValue}>{project.coordinates.latitude}° N</Text>
+              <Text style={styles.geoValue}>
+                {project.latitude != null
+                  ? `${project.latitude}° N`
+                  : project.coordinates?.latitude != null
+                  ? `${project.coordinates.latitude}° N`
+                  : 'N/A'}
+              </Text>
             </View>
             <View style={styles.geoItem}>
               <Text style={styles.geoLabel}>Longitude</Text>
-              <Text style={styles.geoValue}>{project.coordinates.longitude}° E</Text>
+              <Text style={styles.geoValue}>
+                {project.longitude != null
+                  ? `${project.longitude}° E`
+                  : project.coordinates?.longitude != null
+                  ? `${project.coordinates.longitude}° E`
+                  : 'N/A'}
+              </Text>
             </View>
             <View style={styles.geoItem}>
               <Text style={styles.geoLabel}>Geofence</Text>
@@ -196,7 +208,7 @@ export default function ProjectDetailsScreen({ navigation, route }) {
 
           <TouchableOpacity
             style={styles.outlineActionBtn}
-            onPress={() => navigation.navigate('InspectionsTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
             activeOpacity={0.85}
           >
             <Ionicons name="document-text-outline" size={18} color={COLORS.textSecondary} />

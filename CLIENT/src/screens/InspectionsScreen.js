@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,29 +6,54 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_INSPECTIONS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 export default function InspectionsScreen({ navigation, route }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState('All');
+  const [inspectionsList, setInspectionsList] = useState(MOCK_INSPECTIONS);
+  const [refreshing, setRefreshing] = useState(false);
 
   const tabs = ['All', 'Assigned', 'In Progress', 'Completed', 'Flagged', 'Pending'];
 
-  const filteredInspections = MOCK_INSPECTIONS.filter((ins) => {
+  const fetchInspections = useCallback(async () => {
+    try {
+      const data = await ApiService.getInspections(selectedTab);
+      if (data && data.length > 0) {
+        setInspectionsList(data);
+      }
+    } catch (e) {
+      console.warn('Inspections fetch fallback', e);
+    }
+  }, [selectedTab]);
+
+  useEffect(() => {
+    fetchInspections();
+  }, [fetchInspections]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchInspections();
+    setRefreshing(false);
+  };
+
+  const filteredInspections = inspectionsList.filter((ins) => {
     const matchesSearch =
-      ins.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ins.projectName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ins.inspectorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      ins.location.toLowerCase().includes(searchQuery.toLowerCase());
+      (ins.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ins.projectName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ins.inspectorName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ins.location || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     if (!matchesSearch) return false;
 
     if (selectedTab === 'All') return true;
-    return ins.status.toLowerCase() === selectedTab.toLowerCase();
+    return (ins.status || '').toLowerCase() === selectedTab.toLowerCase();
   });
 
   const renderInspectionCard = ({ item }) => {
@@ -214,6 +239,9 @@ export default function InspectionsScreen({ navigation, route }) {
         renderItem={renderInspectionCard}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="clipboard-outline" size={48} color={COLORS.textMuted} />

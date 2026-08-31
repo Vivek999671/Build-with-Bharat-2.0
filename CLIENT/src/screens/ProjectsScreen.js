@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,30 +6,55 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_PROJECTS } from '../data/mockData';
+import { ApiService } from '../services/apiService';
 
 export default function ProjectsScreen({ navigation }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState('All');
+  const [projectsList, setProjectsList] = useState(MOCK_PROJECTS);
+  const [refreshing, setRefreshing] = useState(false);
 
   const filters = ['All', 'Active', 'High Risk', 'Pending Review'];
 
-  const filteredProjects = MOCK_PROJECTS.filter((project) => {
+  const fetchProjects = useCallback(async () => {
+    try {
+      const data = await ApiService.getProjects(selectedFilter);
+      if (data && data.length > 0) {
+        setProjectsList(data);
+      }
+    } catch (e) {
+      console.warn('Projects fetch fallback', e);
+    }
+  }, [selectedFilter]);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchProjects();
+    setRefreshing(false);
+  };
+
+  const filteredProjects = projectsList.filter((project) => {
     const matchesSearch =
-      project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.scheme.toLowerCase().includes(searchQuery.toLowerCase());
+      (project.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (project.id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (project.location || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (project.scheme || '').toLowerCase().includes(searchQuery.toLowerCase());
 
     if (!matchesSearch) return false;
 
     if (selectedFilter === 'All') return true;
     if (selectedFilter === 'Active') return project.status === 'Active';
-    if (selectedFilter === 'High Risk') return project.riskScore >= 70;
+    if (selectedFilter === 'High Risk') return (project.riskScore || 0) >= 70;
     if (selectedFilter === 'Pending Review') return project.status === 'Pending Review';
 
     return true;
@@ -223,6 +248,9 @@ export default function ProjectsScreen({ navigation }) {
         renderItem={renderProjectCard}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Ionicons name="folder-open-outline" size={48} color={COLORS.textMuted} />

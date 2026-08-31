@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,11 +10,26 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
+import { getSavedUser, setAuthToken, setSavedUser } from '../services/apiService';
 
 export default function ProfileScreen({ navigation, route }) {
-  const departmentName = route.params?.department || 'Department of Social Justice and Empowerment';
-  const departmentCode = route.params?.departmentCode || 'DoSJE';
-  const userRole = route.params?.userRole || 'Field Inspection Officer';
+  const [currentUser, setCurrentUser] = useState(route.params?.user || null);
+
+  useEffect(() => {
+    (async () => {
+      if (!currentUser) {
+        const saved = await getSavedUser();
+        if (saved) setCurrentUser(saved);
+      }
+    })();
+  }, [currentUser]);
+
+  const departmentName = currentUser?.department || route.params?.department || 'Department of Social Justice and Empowerment';
+  const officerName = currentUser?.fullName || 'Rahul Sharma';
+  const officialId = currentUser?.officialId || 'DSJE-OFF-2026';
+  const userRole = currentUser?.designation || route.params?.userRole || 'Field Inspection Officer';
+  const districtName = currentUser?.district || 'Pune';
+  const stateName = currentUser?.state || 'MH';
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
@@ -41,8 +56,8 @@ export default function ProfileScreen({ navigation, route }) {
             <View style={styles.onlineBadge} />
           </View>
 
-          <Text style={styles.officerName}>Rahul Sharma</Text>
-          <Text style={styles.officerRole}>{userRole} (ID: DSJE-OFF-2026)</Text>
+          <Text style={styles.officerName}>{officerName}</Text>
+          <Text style={styles.officerRole}>{userRole} (ID: {officialId})</Text>
 
           <View style={styles.deptBadge}>
             <Ionicons name="business" size={13} color={COLORS.primary} />
@@ -54,7 +69,7 @@ export default function ProfileScreen({ navigation, route }) {
           <View style={styles.quickInfoGrid}>
             <View style={styles.infoCol}>
               <Text style={styles.infoLabel}>DISTRICT</Text>
-              <Text style={styles.infoVal}>Pune, MH</Text>
+              <Text style={styles.infoVal}>{districtName}, {stateName}</Text>
             </View>
             <View style={styles.infoDivider} />
             <View style={styles.infoCol}>
@@ -73,7 +88,7 @@ export default function ProfileScreen({ navigation, route }) {
         <View style={styles.menuCard}>
           <TouchableOpacity
             style={styles.menuItem}
-            onPress={() => navigation.navigate('InspectionsTab')}
+            onPress={() => navigation.navigate('MainTabs', { screen: 'InspectionsTab' })}
           >
             <View style={[styles.menuIconWrap, { backgroundColor: COLORS.primaryLight }]}>
               <Ionicons name="clipboard" size={18} color={COLORS.primary} />
@@ -149,7 +164,11 @@ export default function ProfileScreen({ navigation, route }) {
               {
                 text: 'Log Out',
                 style: 'destructive',
-                onPress: () => navigation.replace('Login'),
+                onPress: async () => {
+                  await setAuthToken(null);
+                  await setSavedUser(null);
+                  navigation.replace('Login');
+                },
               },
             ]);
           }}

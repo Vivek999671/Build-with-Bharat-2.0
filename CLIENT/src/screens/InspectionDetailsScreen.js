@@ -103,7 +103,11 @@ export default function InspectionDetailsScreen({ navigation, route }) {
             <View style={styles.infoCol}>
               <Text style={styles.infoLabel}>GPS Coordinates</Text>
               <Text style={styles.infoValue}>
-                {inspection.coordinates.latitude}, {inspection.coordinates.longitude}
+                {inspection.latitude != null && inspection.longitude != null
+                  ? `${inspection.latitude}° N, ${inspection.longitude}° E`
+                  : inspection.coordinates?.latitude != null && inspection.coordinates?.longitude != null
+                  ? `${inspection.coordinates.latitude}° N, ${inspection.coordinates.longitude}° E`
+                  : 'Location unavailable'}
               </Text>
             </View>
           </View>

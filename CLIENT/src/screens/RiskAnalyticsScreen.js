@@ -1,19 +1,45 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, SHADOWS, SPACING, RADIUS } from '../theme/theme';
 import { MOCK_PROJECTS } from '../data/mockData';
 import { detectAnomalies } from '../utils/anomalyDetection';
+import { ApiService } from '../services/apiService';
 
 export default function RiskAnalyticsScreen({ navigation }) {
-  const highRiskProjects = MOCK_PROJECTS.filter((p) => p.riskScore >= 60);
+  const [projectsList, setProjectsList] = useState(MOCK_PROJECTS);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchRiskData = useCallback(async () => {
+    try {
+      const data = await ApiService.getProjects();
+      if (data && data.length > 0) {
+        setProjectsList(data);
+      }
+    } catch (e) {
+      console.warn('Risk data fetch fallback', e);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRiskData();
+  }, [fetchRiskData]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchRiskData();
+    setRefreshing(false);
+  };
+
+  const highRiskProjects = projectsList.filter((p) => (p.riskScore || 0) >= 60);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['bottom']}>
@@ -21,6 +47,9 @@ export default function RiskAnalyticsScreen({ navigation }) {
         style={styles.container}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+        }
       >
         {/* Risk Algorithm Card */}
         <View style={styles.engineCard}>
